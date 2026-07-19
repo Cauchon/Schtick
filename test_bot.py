@@ -8,6 +8,8 @@ import sys
 from dotenv import load_dotenv
 import google.generativeai as genai
 
+from larry_david_bot import LARRY_DAVID_PROMPT
+
 # Load environment variables
 load_dotenv()
 
@@ -20,61 +22,18 @@ def test_quote_generation():
         return False
     
     genai.configure(api_key=gemini_api_key)
-    
-    prompt = """You are Larry David from Curb Your Enthusiasm. You're known for your 
-    neurotic, socially awkward personality and your tendency to get into awkward situations. 
-    You're often frustrated by social norms and petty annoyances. You're direct, blunt, 
-    and have a unique perspective on everyday life.
-    
-    Generate a short, funny quote as if you're Larry David. Make it sound 
-    exactly like something Larry David would say. It should be observational, slightly 
-    complaining, and highlight the absurdity of modern life.
-    
-    - Be under 281 characters (Twitter/X-friendly)
-    - Reflect Larry's neurotic, petty, or brutally honest personality
-    - Be observational, cranky, or socially awkward—like a mini-rant or ethical debate
-    - Feel like something he'd say mid-confrontation or in a passive-aggressive monologue
-    - Do NOT start a quote with "You know" or "You ever"
-    - Do NOT end the quote with "you know.." or similar repetitive phrases
-    - Be self-contained and funny
-    - Do not include quotation marks before or after the quote
 
-    Examples:
-    
-    - "I don't trust anyone who's nice to me but rude to the waiter. Because they're just 
-    waiting until they can be rude to me too."
-    
-    - "I don't like to make plans for the day because then the word 'premeditated' gets 
-    thrown around in the courtroom."
-        
-    - "I held the door for someone who was too far away. Now I'm standing here like a doorman. I didn't sign up for this."
-    
-    - "I don't understand why people take selfies with celebrities. What are you going to 
-    do with that? 'Here's me bothering a famous person'?"
-    
-    - "I said "bless you" once. You sneezed four more times. How many blessings do you need? It's not a sneeze-a-thon."
-
-    - "I asked if I could sample a grape. Suddenly I'm the shoplifter of the produce aisle."
-
-    - "I brought my own fork to the barbecue. Now I'm the weirdo? They had sporks, Jeff. Sporks!"
-
-    - "You can't call it "casual Friday" and then judge me for wearing Crocs. That's the deal. That's the contract."
-
-    - "If you RSVP with "if I can make it," you shouldn't be offended when nobody saves you a seat."
-
-    - "Why do people say "you'll love this show" like it's a threat? Now I have to love it or I'm the problem."
-
-    - "The minute you say "take your time," you've started a countdown. That's fake generosity.
-
-    Recent quotes (AVOID repeating these specific topics or exact phrasings):
-    {recent_quotes_text}
-    """
+    # Use the same prompt the bot ships with (single source of truth).
+    prompt = LARRY_DAVID_PROMPT
 
     try:
         print("🤖 Testing Gemini API connection...")
         model = genai.GenerativeModel('gemini-flash-latest')
         formatted_prompt = prompt.format(recent_quotes_text="")
-        response = model.generate_content(formatted_prompt)
+        response = model.generate_content(
+            formatted_prompt,
+            generation_config=genai.types.GenerationConfig(temperature=1.1),
+        )
         
         quote = response.text.strip()
         
@@ -86,10 +45,10 @@ def test_quote_generation():
         print(f"📝 Generated quote: {quote}")
         print(f"📏 Character count: {len(quote)}")
         
-        if len(quote) > 281:
-            print("⚠️  Warning: Quote exceeds 281 character limit (Twitter limit)")
+        if len(quote) > 240:
+            print("⚠️  Warning: Quote exceeds 240 character target")
         else:
-            print("✅ Quote within 281 character limit (Twitter compatible)")
+            print("✅ Quote within 240 character target (Twitter/Bluesky compatible)")
         
         return True
         
