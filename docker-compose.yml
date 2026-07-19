@@ -5,33 +5,41 @@
 # Logs: container stdout/stderr is available via `docker compose logs -f
 # <service>` / `docker logs` (and journald too, if the Docker daemon's log
 # driver is journald, as is typical on a systemd-managed Pi). The per-slug
-# `<slug>.log` file written by the bot itself lives inside that service's
-# named volume, alongside recent_posts_<slug>.json.
+# `<slug>.log` file written by the bot itself lives on the host in that
+# service's data directory, alongside recent_posts_<slug>.json.
 #
-# State: each service's named volume persists recent_posts_<slug>.json (the
-# duplicate-post cache) across restarts and rebuilds. Without it, the cache
-# would reset every time the container restarts, and the bot could start
-# repeating quotes.
+# State: each service bind-mounts a host directory at the container's working
+# directory, so recent_posts_<slug>.json (the duplicate-post cache) and
+# <slug>.log survive restarts and rebuilds AND stay readable on the host for
+# inspection and backup. Without persistence the cache resets on every restart
+# and the bot starts repeating quotes.
+#
+# A directory is mounted rather than individual files on purpose: Docker
+# silently creates a *directory* in place of a bind-mounted file that doesn't
+# exist yet on the host, which then breaks the bot's writes.
+#
+# First run: create the directories owned by the container's user (uid 1000),
+# otherwise the non-root process can't write to them:
+#   mkdir -p data/larry_david data/kramer && sudo chown -R 1000:1000 data
 
 services:
   larry-david-bot:
     build: .
+    image: persona-bot:latest
     command: larry_david
     env_file: .env.larry_david
     volumes:
-      - larry_david_data:/home/appuser/data
+      - ./data/larry_david:/home/appuser/data
     restart: unless-stopped
 
   kramer-bot:
     build: .
+    image: persona-bot:latest
     command: kramer
     env_file: .env.kramer
     volumes:
-      - kramer_data:/home/appuser/data
+      - ./data/kramer:/home/appuser/data
     restart: unless-stopped
 
 # Add a third persona by copying one of the service blocks above (new slug for
-# `command`, new `.env.<slug>` file, new volume name) -- see README.md.
-volumes:
-  larry_david_data:
-  kramer_data:
+# `command`, new `.env.<slug>` file, new data directory) -- see README.md.

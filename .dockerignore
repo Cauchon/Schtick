@@ -9,3 +9,4 @@ recent_posts*.json
 deploy/
 render.yaml
 *.md
+data/

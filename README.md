@@ -200,17 +200,11 @@ worker services (`larry-david-bot` and `kramer-bot`), each running
    - `TWITTER_ACCESS_SECRET` (optional)
 3. Deploy. Each service starts posting on its own persona's schedule.
 
-### Raspberry Pi / self-hosted
+### Docker (Raspberry Pi) — the live setup
 
-See [RASPBERRY_PI.md](RASPBERRY_PI.md) for running both bots as `systemd`
-services via the `deploy/persona-bot@.service` template unit.
-
-### Docker (Raspberry Pi)
-
-If you'd rather run both bots as containers instead of `systemd` services,
-`Dockerfile` and `docker-compose.yml` at the repo root do that. The base image
-(`python:3.11-slim`) is multi-arch, so this works unmodified on a Raspberry Pi
-(arm64) as well as amd64 hosts.
+`Dockerfile` and `docker-compose.yml` at the repo root run both bots as
+containers. The base image (`python:3.11-slim`) is multi-arch, so this works
+unmodified on a Raspberry Pi (arm64) as well as amd64 hosts.
 
 1. **Create the per-persona env files** (same convention as above):
    ```bash
@@ -219,40 +213,50 @@ If you'd rather run both bots as containers instead of `systemd` services,
    ```
    Fill in each with that persona's Bluesky/Twitter credentials.
 
-2. **Build and start both bots**:
+2. **Create the data directories, owned by the container's user.** The
+   container runs as non-root uid 1000, and Docker creates a missing
+   bind-mount target as `root`, which the bot then can't write to:
+   ```bash
+   mkdir -p data/larry_david data/kramer
+   sudo chown -R 1000:1000 data
+   ```
+
+3. **Build and start both bots**:
    ```bash
    docker compose up -d --build
    ```
-   This builds one image from the `Dockerfile` and starts two containers,
-   `larry-david-bot` and `kramer-bot`, each running `python -m persona_bot
-   <slug>` with its own env file (`command: larry_david` / `command: kramer`
-   in `docker-compose.yml` supplies the slug — there's no `CMD` baked into the
-   image).
+   This builds one image and starts two containers, `larry-david-bot` and
+   `kramer-bot`, each running `python -m persona_bot <slug>` with its own env
+   file (`command: larry_david` / `command: kramer` supplies the slug — no
+   `CMD` is baked into the image).
 
-3. **Tail logs**:
+4. **Tail logs**:
    ```bash
    docker compose logs -f larry-david-bot
    docker compose logs -f kramer-bot
    ```
-   Container stdout/stderr is what `docker compose logs` / `docker logs`
-   show; the same output also goes to journald if the Docker daemon's log
-   driver is journald (typical on a systemd-managed Pi). The per-slug
-   `<slug>.log` file the bot writes itself lives inside that service's named
-   volume, alongside `recent_posts_<slug>.json`.
 
-4. **State persistence**: each service mounts its own named Docker volume
-   (`larry_david_data`, `kramer_data`) at the directory the bot uses as its
-   working directory. That's where `recent_posts_<slug>.json` (the
-   duplicate-post cache) and `<slug>.log` land, so they survive
-   `docker compose restart`, host reboots, and image rebuilds. Without this,
-   the duplicate cache would reset on every container restart and the bots
-   could start repeating quotes.
+5. **State persistence**: each service bind-mounts `./data/<slug>` at the
+   container's working directory, so `recent_posts_<slug>.json` (the
+   duplicate-post cache) and `<slug>.log` survive restarts, reboots, and
+   rebuilds — and stay readable on the host for inspection and backup.
+   Without this the cache resets on every restart and the bots start
+   repeating quotes.
 
-5. **Adding a third persona**: copy one of the service blocks in
-   `docker-compose.yml` (new service name, `command: <slug>`, its own
-   `env_file: .env.<slug>`, and its own named volume), add that volume under
-   the top-level `volumes:` key, and create its `.env.<slug>` file — same
-   pattern as adding a Render worker or a `systemd` instance.
+6. **Adding a third persona**: copy a service block in `docker-compose.yml`
+   (new service name, `command: <slug>`, its own `env_file: .env.<slug>` and
+   `./data/<slug>` mount), then create the env file and data directory.
+
+See [RASPBERRY_PI.md](RASPBERRY_PI.md) for the full Pi guide, including how to
+run these services inside an existing Compose stack and the cutover procedure
+from the old two-repo setup.
+
+### Alternative: systemd
+
+`deploy/persona-bot@.service` is a template unit for running the bots as
+native processes instead of containers (`persona-bot@larry_david`,
+`persona-bot@kramer`). Not the setup in use — see
+[RASPBERRY_PI.md](RASPBERRY_PI.md).
 
 ## Configuration
 
@@ -302,8 +306,9 @@ Larry-David-Bot/
 ├── env.example
 ├── README.md
 ├── RASPBERRY_PI.md
-├── recent_posts_<slug>.json   # per-persona duplicate cache (generated)
-└── <slug>.log                 # per-persona log file (generated)
+├── data/<slug>/               # Docker: per-persona state, bind-mounted (generated)
+├── recent_posts_<slug>.json   # native run: duplicate cache in cwd (generated)
+└── <slug>.log                 # native run: log file in cwd (generated)
 ```
 
 ## Logging & State
