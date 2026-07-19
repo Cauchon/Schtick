@@ -1,0 +1,37 @@
+# Docker Compose setup for running both persona bots on a Raspberry Pi (or any
+# arm64/amd64 host). Each service uses the same image/Dockerfile, and differs
+# only in its `command` (the persona slug) and its env file.
+#
+# Logs: container stdout/stderr is available via `docker compose logs -f
+# <service>` / `docker logs` (and journald too, if the Docker daemon's log
+# driver is journald, as is typical on a systemd-managed Pi). The per-slug
+# `<slug>.log` file written by the bot itself lives inside that service's
+# named volume, alongside recent_posts_<slug>.json.
+#
+# State: each service's named volume persists recent_posts_<slug>.json (the
+# duplicate-post cache) across restarts and rebuilds. Without it, the cache
+# would reset every time the container restarts, and the bot could start
+# repeating quotes.
+
+services:
+  larry-david-bot:
+    build: .
+    command: larry_david
+    env_file: .env.larry_david
+    volumes:
+      - larry_david_data:/home/appuser/data
+    restart: unless-stopped
+
+  kramer-bot:
+    build: .
+    command: kramer
+    env_file: .env.kramer
+    volumes:
+      - kramer_data:/home/appuser/data
+    restart: unless-stopped
+
+# Add a third persona by copying one of the service blocks above (new slug for
+# `command`, new `.env.<slug>` file, new volume name) -- see README.md.
+volumes:
+  larry_david_data:
+  kramer_data:

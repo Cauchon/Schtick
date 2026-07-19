@@ -1,0 +1,11 @@
+.git
+__pycache__/
+*.log
+.env
+.env.*
+recent_posts*.json
+.DS_Store
+.claude
+deploy/
+render.yaml
+*.md
