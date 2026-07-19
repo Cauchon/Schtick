@@ -131,9 +131,9 @@ schedule.every(214).minutes.do(self.post_quote)
 ```
 
 ### Quote Generation
-- **Character limit**: 280 characters (Twitter-compatible)
+- **Character limit**: 240 characters (Twitter/Bluesky-compatible)
 - **AI model**: gemini-flash-latest
-- **Temperature**: Default (creative)
+- **Temperature**: 1.1 (wider comedic range)
 - **Fallback quotes**: 5 pre-written quotes if AI fails
 
 ### Duplicate Prevention
