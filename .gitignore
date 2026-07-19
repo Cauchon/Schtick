@@ -1,8 +1,7 @@
 .env
-RASPBERRY_PI.md
-larry_david_bot.service
+.env.*
 .DS_Store
-/__pycache__
-larry_david_bot.log
+__pycache__/
+*.log
 recent_posts.json
-larry_david_bot.log
+recent_posts_*.json

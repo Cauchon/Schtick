@@ -1,33 +1,57 @@
-# Larry David Bot 🤖
+# Persona Bot 🤖
 
-A Bluesky and X/Twitter bot that automatically posts fictional Larry David quotes every 3 hours and 34 minutes, as if he were commenting on modern life in 2025 with his signature neurotic and comedic perspective.
+One engine, two voices: a Bluesky/X (Twitter) bot that posts AI-generated,
+in-character quotes on a schedule. This repo (still named `Larry-David-Bot`
+for historical reasons) houses **both** bots — Larry David and Kramer — as a
+single codebase, with each character's voice, prompt, and quirks defined as
+plain data in `personas/`.
+
+## How it works
+
+- **`persona_bot/`** — the generic engine. It logs into Bluesky, optionally
+  posts to Twitter/X via API v2, calls Gemini to generate a quote, retries on
+  duplicates, and runs on a scheduler. It knows nothing about Larry David or
+  Kramer specifically.
+- **`personas/`** — one module per character (`larry_david.py`, `kramer.py`).
+  Each module is the single source of truth for that character's prompt,
+  fallback quotes, and a few generation knobs (see below). The engine imports
+  a persona module and drives itself from its constants.
+
+Because the personas are just data, running "the Larry David bot" and running
+"the Kramer bot" is the same code with a different argument:
+
+```bash
+python -m persona_bot larry_david
+python -m persona_bot kramer
+```
 
 ## Features
 
 - **Cross-platform posting**: Posts to both Bluesky and Twitter (X)
-- **Automatic scheduling**: Posts every 3 hours and 34 minutes using a scheduler
-- **AI-generated quotes**: Uses Google's Gemini to create unique, in-character Larry David quotes
-- **Duplicate prevention**: Caches recent posts to avoid repeats
-- **Modern context**: Quotes reference current technology (AirPods, TikTok, AI, Zoom, etc.)
-- **Easy deployment**: Ready to deploy,
-- **Fallback system**: Includes backup quotes if AI generation fails
+- **Automatic scheduling**: Posts every 3 hours and 34 minutes (214 minutes) per persona
+- **AI-generated quotes**: Uses Google's Gemini (`gemini-flash-latest`) to write unique, in-character quotes
+- **Duplicate prevention**: Caches the last 100 posts per persona to avoid repeats
+- **Fallback system**: Falls back to a curated list of quotes if AI generation fails
+- **Multi-persona from one checkout**: Per-persona `.env.<slug>`, log, and state files let you run several bots side by side on the same machine
 
-## Example Quotes
+## Personas
 
+| Persona       | Slug          | Char target | Temperature | Interval          |
+|---------------|---------------|-------------|-------------|-------------------|
+| Larry David   | `larry_david` | 240         | 1.1         | 214 min (3h34m)   |
+| Kramer        | `kramer`      | 281         | default     | 214 min (3h34m)   |
+
+### Example Quotes
+
+Larry David:
 - "You know what I hate? When you're at a restaurant and the server says 'Enjoy your meal' and you say 'You too'."
 - "I don't trust anyone who's nice to me but rude to the waiter. Because they're just waiting until they can be rude to me too."
-- "I don't like to make plans for the day because then the word 'premeditated' gets thrown around in the courtroom."
-- "You know what's interesting about politics? It's not interesting."
 
-## Setup
+Kramer:
+- "I'm implementing a reverse-peephole. I want to see what's going on in my own apartment when I'm not there!"
+- "My friend Bob Sacamano called me at 3 AM. He says the sewers are the new subway!"
 
-### Prerequisites
-
-1. **Bluesky Account**: You need a Bluesky account and an App Password
-2. **Google Cloud API Key**: For generating quotes with Gemini
-3. **Twitter API Access** (Optional): For cross-posting to Twitter (X) using API v2
-
-### Local Development
+## Quick Start
 
 1. **Clone the repository**:
    ```bash
@@ -44,7 +68,7 @@ A Bluesky and X/Twitter bot that automatically posts fictional Larry David quote
    ```bash
    cp env.example .env
    ```
-   
+
    Edit `.env` with your credentials:
    ```
    # Required
@@ -60,17 +84,38 @@ A Bluesky and X/Twitter bot that automatically posts fictional Larry David quote
    TWITTER_ACCESS_SECRET=your-access-secret
    ```
 
-4. **Run the bot**:
+4. **Run a persona**:
    ```bash
-   python larry_david_bot.py
+   python -m persona_bot larry_david
+   # or
+   python -m persona_bot kramer
    ```
+
+   The persona slug can also come from the `PERSONA` environment variable
+   instead of an argument; running with neither prints usage and the list of
+   available personas.
+
+### Running multiple personas from one checkout
+
+If you want to run both bots from the same clone (e.g. on a Raspberry Pi, or
+two local processes), give each persona its own env file instead of a shared
+`.env`:
+
+```bash
+cp env.example .env.larry_david
+cp env.example .env.kramer
+```
+
+`python -m persona_bot <slug>` loads `.env.<slug>` automatically if it exists,
+falling back to plain `.env` otherwise — so each persona can use its own
+Bluesky/Twitter accounts (the Gemini key may be shared or per-account).
 
 ### Bluesky App Password Setup
 
 1. Go to [Bluesky Settings](https://bsky.app/settings)
 2. Navigate to "App Passwords"
 3. Create a new app password
-4. Use this password in your `.env` file
+4. Use this password in your `.env` (or `.env.<slug>`) file
 
 ### Setting Up Twitter API v2
 
@@ -87,110 +132,155 @@ A Bluesky and X/Twitter bot that automatically posts fictional Larry David quote
    - Access Token and Secret
    - Bearer Token (under "Authentication Tokens")
 
-### Testing Your Setup
+Twitter is entirely optional — without `TWITTER_BEARER_TOKEN` set, the bot
+logs a warning and simply skips the Twitter post, still posting to Bluesky.
 
-1. Run the test script to verify your configuration:
-   ```bash
-   python test_bot.py
-   ```
+## Testing
 
-2. The bot will test:
-   - Environment variables
-   - Gemini API connection
-   - Fallback quotes
-   - Twitter API configuration (if provided)
+`test_bot.py` is a manual live-check script (not pytest) that exercises the
+real Gemini API without posting anywhere:
 
-### Deployment on Render.com
+```bash
+python test_bot.py                 # checks every persona in AVAILABLE_PERSONAS
+python test_bot.py larry_david     # checks only that persona
+python test_bot.py kramer
+```
 
-1. **Connect your repository** to Render.com
-2. **Create a new Worker Service**
-3. **Configure the service**:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `python larry_david_bot.py`
-   - **Environment**: Python
+It verifies required/optional environment variables once, then per persona:
+generates one quote using that persona's `PROMPT` and `GENERATION_CONFIG`
+(the same code path the bot itself uses), prints the character count and
+warns if it exceeds the persona's `CHAR_TARGET`, and prints each
+`FALLBACK_QUOTES` entry with its character count. Exits with status 1 if
+anything fails.
 
-4. **Add environment variables** in Render dashboard:
+## Adding a New Persona
+
+1. Create `personas/<slug>.py` modeled on `personas/larry_david.py` or
+   `personas/kramer.py`, defining:
+   - `SLUG` — must match the module name
+   - `DISPLAY_NAME`
+   - `PROMPT` — must contain the `{recent_quotes_text}` placeholder
+   - `FALLBACK_QUOTES` — a list of backup quotes
+   - `GENERATION_CONFIG` — kwargs for `genai.types.GenerationConfig` (`{}` for Gemini defaults)
+   - `CHAR_TARGET` — soft length target used by `test_bot.py`
+   - `POST_INTERVAL_MINUTES` — scheduler interval
+2. Add the slug to `AVAILABLE_PERSONAS` in `personas/__init__.py`.
+3. Give the persona a way to run:
+   - **Render**: add another `worker` service to `render.yaml` with
+     `startCommand: python -m persona_bot <slug>` (copy one of the existing
+     service blocks).
+   - **systemd (Raspberry Pi, etc.)**: enable another instance of the
+     template unit, `sudo systemctl enable --now persona-bot@<slug>` — see
+     [RASPBERRY_PI.md](RASPBERRY_PI.md).
+4. Set that persona's credentials (its own `.env.<slug>` locally, or its own
+   env vars on the Render service / systemd `EnvironmentFile`).
+
+No changes to `persona_bot/` are needed — the engine is generic.
+
+## Deployment
+
+### Render.com
+
+`render.yaml` is a single Render blueprint defining **both** bots as separate
+worker services (`larry-david-bot` and `kramer-bot`), each running
+`python -m persona_bot <slug>`. To deploy:
+
+1. Connect this repository to Render.com and create a new **Blueprint**
+   (Render will detect `render.yaml` and offer to create both services).
+2. For each service, fill in the environment variables in the Render
+   dashboard (they're declared with `sync: false` in the blueprint, so Render
+   prompts for values rather than syncing them from a group):
    - `BLUESKY_HANDLE`
    - `BLUESKY_APP_PASSWORD`
    - `GEMINI_API_KEY`
-   - `TWITTER_BEARER_TOKEN` (if using Twitter API v2)
-   - `TWITTER_API_KEY` (if using Twitter API v2)
-   - `TWITTER_API_SECRET` (if using Twitter API v2)
-   - `TWITTER_ACCESS_TOKEN` (if using Twitter API v2)
-   - `TWITTER_ACCESS_SECRET` (if using Twitter API v2)
+   - `TWITTER_BEARER_TOKEN` (optional)
+   - `TWITTER_API_KEY` (optional)
+   - `TWITTER_API_SECRET` (optional)
+   - `TWITTER_ACCESS_TOKEN` (optional)
+   - `TWITTER_ACCESS_SECRET` (optional)
+3. Deploy. Each service starts posting on its own persona's schedule.
 
-5. **Deploy**! The bot will start posting every 3 hours and 34 minutes.
+### Raspberry Pi / self-hosted
+
+See [RASPBERRY_PI.md](RASPBERRY_PI.md) for running both bots as `systemd`
+services via the `deploy/persona-bot@.service` template unit.
 
 ## Configuration
 
-### Posting Schedule
-The bot posts every 3 hours and 34 minutes by default. To change this, modify the schedule in `larry_david_bot.py`:
+Most per-character knobs live in the persona module (`personas/<slug>.py`),
+not the engine:
 
-```python
-schedule.every(214).minutes.do(self.post_quote)
-```
+- **Posting interval** — `POST_INTERVAL_MINUTES` (214 for both personas today)
+- **Generation temperature / other Gemini kwargs** — `GENERATION_CONFIG`
+  (e.g. Larry David's `{"temperature": 1.1}`; Kramer's `{}`, i.e. Gemini
+  defaults)
+- **Soft character target** — `CHAR_TARGET` (used by `test_bot.py` to warn,
+  not enforced on the actual post)
+- **Fallback quotes** — `FALLBACK_QUOTES`
+- **The prompt itself** — `PROMPT`
 
-### Quote Generation
-- **Character limit**: 240 characters (Twitter/Bluesky-compatible)
-- **AI model**: gemini-flash-latest
-- **Temperature**: 1.1 (wider comedic range)
-- **Fallback quotes**: 5 pre-written quotes if AI fails
+A few knobs are engine-wide, shared by every persona, and live in
+`persona_bot/bot.py` instead:
 
-### Duplicate Prevention
-- **Cache size**: Last 100 posts
-- **Storage**: JSON file (`recent_posts.json`)
-- **Retry attempts**: Up to 10 attempts for unique quotes
+- **Duplicate cache size** — last 100 posts per persona (`max_cache_size` in `PersonaBot.__init__`)
+- **Unique-quote retry attempts** — up to 10 tries before falling back (`post_quote`)
+- **Twitter hard truncation** — tweets are hard-truncated to 280 characters regardless of `CHAR_TARGET`
+
+To change interval, temperature, or fallback quotes for one persona, edit its
+module in `personas/`. To change the cache size or retry count for every
+persona, edit `persona_bot/bot.py`.
 
 ## File Structure
 
 ```
 Larry-David-Bot/
-├── larry_david_bot.py          # Main bot script
-├── test_bot.py           # Test script for verification
-├── requirements.txt       # Python dependencies
-├── render.yaml           # Render.com deployment config
-├── env.example           # Environment variables template
-├── README.md            # This file
-└── recent_posts.json    # Generated cache file
+├── persona_bot/
+│   ├── __init__.py
+│   ├── __main__.py          # CLI entry: python -m persona_bot <slug>
+│   └── bot.py                # PersonaBot engine class
+├── personas/
+│   ├── __init__.py           # AVAILABLE_PERSONAS + load_persona()
+│   ├── larry_david.py
+│   └── kramer.py
+├── deploy/
+│   └── persona-bot@.service  # systemd template unit
+├── test_bot.py                # live check script, parametrized over personas
+├── requirements.txt
+├── render.yaml                # Render blueprint, one service per persona
+├── env.example
+├── README.md
+├── RASPBERRY_PI.md
+├── recent_posts_<slug>.json   # per-persona duplicate cache (generated)
+└── <slug>.log                 # per-persona log file (generated)
 ```
 
-## Logging
+## Logging & State
 
-The bot logs all activities to:
-- **Console output**: Real-time logs
-- **File**: `larry_david_bot.log`
+Each persona writes to its own files, named after its slug, so multiple
+personas can run from the same checkout without clobbering each other:
 
-## Customization
+- **Log file**: `<slug>.log` (e.g. `larry_david.log`, `kramer.log`), plus
+  console output.
+- **Duplicate cache**: `recent_posts_<slug>.json`.
 
-### Adding More Fallback Quotes
-Edit the `get_fallback_quote()` method in `larry_david_bot.py`:
-
-```python
-fallback_quotes = [
-    "Your new quote here, Jeff!",
-    # ... existing quotes
-]
-```
-
-### Modifying the AI Prompt
-Edit the `generate_larry_quote()` method to change the quote style or topics.
-
-### Changing Post Frequency
-Modify the scheduler in `run_scheduler()` method.
+**Legacy migration**: if a persona's `recent_posts_<slug>.json` doesn't exist
+yet but a legacy shared `recent_posts.json` does (from before this
+consolidation), the bot adopts the legacy file's contents into the new
+per-persona file on first run. The legacy file is left in place, untouched.
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Authentication errors**: Check your Bluesky handle and app password
-2. **API rate limits**: The bot includes retry logic for Gemini API
-3. **Duplicate posts**: Check the `recent_posts.json` cache file
-4. **Deployment issues**: Ensure all environment variables are set in Render
+1. **Authentication errors**: Check the persona's Bluesky handle and app password
+2. **API rate limits**: The bot includes retry logic for the Gemini API
+3. **Duplicate posts**: Check that persona's `recent_posts_<slug>.json` cache file
+4. **Deployment issues**: Ensure all environment variables are set for each service/instance
+5. **Wrong persona running**: Check the `PERSONA` env var / CLI arg and which `.env.<slug>` file is present
 
 ### Logs
-Check the logs for detailed error information:
+
 ```bash
-tail -f larry_david_bot.log
+tail -f larry_david.log
+tail -f kramer.log
 ```
 
 ## Contributing
@@ -204,3 +294,5 @@ This project is open source. Feel free to use and modify as needed.
 ---
 
 *"You know what I like about this bot? It's like having me in your pocket, but without the social anxiety."* - Larry David
+
+*"It's not a bot, Jerry, it's an extension of myself! It's out there posting at 3 AM, giddy, giving the people what they need!"* - Kramer

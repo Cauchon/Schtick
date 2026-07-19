@@ -3,13 +3,13 @@ services:
     name: larry-david-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python larry_david_bot.py
+    startCommand: python -m persona_bot larry_david
     envVars:
       - key: BLUESKY_HANDLE
         sync: false
       - key: BLUESKY_APP_PASSWORD
         sync: false
-      - key: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
       # Optional Twitter API credentials
       - key: TWITTER_BEARER_TOKEN
@@ -22,4 +22,27 @@ services:
         sync: false
       - key: TWITTER_ACCESS_SECRET
         sync: false
-        sync: false 
+
+  - type: worker
+    name: kramer-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m persona_bot kramer
+    envVars:
+      - key: BLUESKY_HANDLE
+        sync: false
+      - key: BLUESKY_APP_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Optional Twitter API credentials
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: TWITTER_API_KEY
+        sync: false
+      - key: TWITTER_API_SECRET
+        sync: false
+      - key: TWITTER_ACCESS_TOKEN
+        sync: false
+      - key: TWITTER_ACCESS_SECRET
+        sync: false
