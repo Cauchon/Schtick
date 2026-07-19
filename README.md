@@ -165,40 +165,18 @@ anything fails.
    - `CHAR_TARGET` — soft length target used by `test_bot.py`
    - `POST_INTERVAL_MINUTES` — scheduler interval
 2. Add the slug to `AVAILABLE_PERSONAS` in `personas/__init__.py`.
-3. Give the persona a way to run:
-   - **Render**: add another `worker` service to `render.yaml` with
-     `startCommand: python -m persona_bot <slug>` (copy one of the existing
-     service blocks).
-   - **systemd (Raspberry Pi, etc.)**: enable another instance of the
-     template unit, `sudo systemctl enable --now persona-bot@<slug>` — see
-     [RASPBERRY_PI.md](RASPBERRY_PI.md).
-4. Set that persona's credentials (its own `.env.<slug>` locally, or its own
-   env vars on the Render service / systemd `EnvironmentFile`).
+3. Give the persona a way to run: add a service block to
+   `docker-compose.yml` (new service name, `command: <slug>`, its own
+   `env_file: .env.<slug>` and `./data/<slug>` mount) — see
+   [RASPBERRY_PI.md](RASPBERRY_PI.md). For a native install instead, enable
+   another instance of the systemd template unit,
+   `sudo systemctl enable --now persona-bot@<slug>`.
+4. Create that persona's `.env.<slug>` file with its own credentials, and its
+   `data/<slug>` directory (`sudo chown 1000:1000` it, for Docker).
 
 No changes to `persona_bot/` are needed — the engine is generic.
 
 ## Deployment
-
-### Render.com
-
-`render.yaml` is a single Render blueprint defining **both** bots as separate
-worker services (`larry-david-bot` and `kramer-bot`), each running
-`python -m persona_bot <slug>`. To deploy:
-
-1. Connect this repository to Render.com and create a new **Blueprint**
-   (Render will detect `render.yaml` and offer to create both services).
-2. For each service, fill in the environment variables in the Render
-   dashboard (they're declared with `sync: false` in the blueprint, so Render
-   prompts for values rather than syncing them from a group):
-   - `BLUESKY_HANDLE`
-   - `BLUESKY_APP_PASSWORD`
-   - `GEMINI_API_KEY`
-   - `TWITTER_BEARER_TOKEN` (optional)
-   - `TWITTER_API_KEY` (optional)
-   - `TWITTER_API_SECRET` (optional)
-   - `TWITTER_ACCESS_TOKEN` (optional)
-   - `TWITTER_ACCESS_SECRET` (optional)
-3. Deploy. Each service starts posting on its own persona's schedule.
 
 ### Docker (Raspberry Pi) — the live setup
 
@@ -299,7 +277,6 @@ Larry-David-Bot/
 │   └── persona-bot@.service  # systemd template unit
 ├── test_bot.py                # live check script, parametrized over personas
 ├── requirements.txt
-├── render.yaml                # Render blueprint, one service per persona
 ├── Dockerfile                 # container image, one image for both bots
 ├── docker-compose.yml         # both bots as containers, one service each
 ├── .dockerignore

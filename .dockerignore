@@ -7,6 +7,5 @@ recent_posts*.json
 .DS_Store
 .claude
 deploy/
-render.yaml
 *.md
 data/
