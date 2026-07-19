@@ -99,7 +99,7 @@ class LarryDavidBot:
             logger.error(f"Could not save recent posts cache: {e}")
     
     def generate_larry_quote(self) -> str:
-        """Generate a new Larry David quote using OpenAI."""
+        """Generate a new Larry David quote using Gemini."""
         prompt = """You are Larry David from Curb Your Enthusiasm. You're known for your 
     neurotic, socially awkward personality and your tendency to get into awkward situations. 
     You're often frustrated by social norms and petty annoyances. You're direct, blunt, 
