@@ -24,8 +24,7 @@ def test_quote_generation():
     prompt = """You are Larry David from Curb Your Enthusiasm. You're known for your 
     neurotic, socially awkward personality and your tendency to get into awkward situations. 
     You're often frustrated by social norms and petty annoyances. You're direct, blunt, 
-    and have a unique perspective on everyday life. You frequently use "I mean" and 
-    "you know" in your speech.
+    and have a unique perspective on everyday life.
     
     Generate a short, funny quote as if you're Larry David. Make it sound 
     exactly like something Larry David would say. It should be observational, slightly 
@@ -36,6 +35,7 @@ def test_quote_generation():
     - Be observational, cranky, or socially awkward—like a mini-rant or ethical debate
     - Feel like something he'd say mid-confrontation or in a passive-aggressive monologue
     - Do NOT start a quote with "You know" or "You ever"
+    - Do NOT end the quote with "you know.." or similar repetitive phrases
     - Be self-contained and funny
     - Do not include quotation marks before or after the quote
 
