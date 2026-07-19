@@ -143,7 +143,7 @@ class LarryDavidBot:
 
     - "Why do people say "you'll love this show" like it's a threat? Now I have to love it or I'm the problem."
 
-    - "The minute you say "take your time," you've started a countdown. That's fake generosity.
+    - "The minute you say "take your time," you've started a countdown. That's fake generosity."
 
     Recent quotes (AVOID repeating these specific topics or exact phrasings):
     {recent_quotes_text}
