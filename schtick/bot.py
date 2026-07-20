@@ -186,28 +186,38 @@ class PersonaBot:
 
             return False
 
-    def post_to_bluesky(self, text: str) -> bool:
-        """Post the given text to Bluesky."""
-        try:
-            # Use RichText if available for better formatting
-            if RichText is not None:
-                rt = RichText(text)
-                rt.detect_links()
-                post = self.client.send_post(text=rt.text, facets=rt.facets)
-            else:
-                post = self.client.send_post(text=text)
+    def _send_bluesky_post(self, text: str):
+        """Send a single post to Bluesky, using RichText if available."""
+        if RichText is not None:
+            rt = RichText(text)
+            rt.detect_links()
+            return self.client.send_post(text=rt.text, facets=rt.facets)
+        return self.client.send_post(text=text)
 
-            post_uri = post.uri
-            self.recent_posts.append(text)
-            # Keep only the most recent posts in cache
-            if len(self.recent_posts) > self.max_cache_size:
-                self.recent_posts = self.recent_posts[-self.max_cache_size:]
-            self.save_recent_posts()
-            logger.info(f"Posted to Bluesky: {text}")
-            return True
+    def post_to_bluesky(self, text: str) -> bool:
+        """Post the given text to Bluesky, re-logging in if the session expired."""
+        try:
+            post = self._send_bluesky_post(text)
         except Exception as e:
-            logger.error(f"Error posting to Bluesky: {e}")
-            return False
+            # Long-running sessions get revoked/expire; the client never recovers
+            # on its own, so re-authenticate and retry once before giving up.
+            logger.warning(f"Bluesky post failed ({e}); re-logging in and retrying...")
+            try:
+                self.client = Client()
+                self.client.login(self.handle, self.app_password)
+                logger.info(f"Re-logged in to Bluesky as {self.handle}")
+                post = self._send_bluesky_post(text)
+            except Exception as e2:
+                logger.error(f"Error posting to Bluesky after re-login: {e2}")
+                return False
+
+        self.recent_posts.append(text)
+        # Keep only the most recent posts in cache
+        if len(self.recent_posts) > self.max_cache_size:
+            self.recent_posts = self.recent_posts[-self.max_cache_size:]
+        self.save_recent_posts()
+        logger.info(f"Posted to Bluesky: {text}")
+        return True
 
     def post_quote(self):
         """Generate and post a new persona quote to Bluesky."""
