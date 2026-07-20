@@ -1,8 +1,8 @@
 # Raspberry Pi Deployment Guide
 
-Run both Persona Bots as Docker containers built from **one checkout** of this
-repo. Both `larry-david-bot` and `kramer-bot` use the same image; only the
-`command` (the persona slug) and the `.env.<slug>` file differ. See
+Run both Schtick bots as Docker containers built from **one checkout** of this
+repo. Both `schtick-larry-david` and `schtick-kramer` use the same image; only
+the `command` (the persona slug) and the `.env.<slug>` file differ. See
 `Dockerfile` and `docker-compose.yml` at the repo root.
 
 A short section on running via `systemd` instead of Docker is at the bottom,
@@ -13,11 +13,13 @@ for reference — Docker is the supported/actual setup this guide covers.
 - **One image, two containers.** `Dockerfile` installs the app once; the
   persona slug (`larry_david`, `kramer`, ...) is supplied at *run* time as the
   container's command, not baked into the image (`ENTRYPOINT ["python", "-m",
-  "persona_bot"]`, no `CMD`). `persona_bot/__main__.py` reads that argument
-  (or the `PERSONA` env var) to decide which persona to load.
+  "schtick"]`, no `CMD`). `schtick/__main__.py` reads that argument (or the
+  `PERSONA` env var) to decide which persona to load. Personas themselves are
+  markdown files in `characters/<slug>.md` (frontmatter + prompt body), not
+  Python modules.
 - **Working directory.** The container runs as a non-root user (`appuser`,
   uid 1000) with its working directory set to `/home/appuser/data` (separate
-  from `/app`, where the code lives). `persona_bot/bot.py` writes two files
+  from `/app`, where the code lives). `schtick/bot.py` writes two files
   relative to the current working directory: `<slug>.log` and
   `recent_posts_<slug>.json` (the duplicate-post cache).
 - **Persistence via bind mount.** `docker-compose.yml` bind-mounts a host
@@ -59,11 +61,17 @@ This is the simplest case: this checkout owns the whole stack.
    ```bash
    docker compose up -d --build
    ```
+   Coming from the old service names (`larry-david-bot`, `kramer-bot`)? Add
+   `--remove-orphans` so Compose stops the old containers instead of leaving
+   them running alongside the renamed ones:
+   ```bash
+   docker compose up -d --build --remove-orphans
+   ```
 
 4. **Tail logs**:
    ```bash
-   docker compose logs -f larry-david-bot
-   docker compose logs -f kramer-bot
+   docker compose logs -f schtick-larry-david
+   docker compose logs -f schtick-kramer
    ```
    The per-slug `<slug>.log` file the bot writes itself is also readable
    directly on the host, at `data/larry_david/larry_david.log` and
@@ -82,20 +90,20 @@ Replace the `kramer-bot` and `larry-david-bot` service blocks in the parent
 stack file with:
 
 ```yaml
-  kramer-bot:
+  schtick-kramer:
     build: ./Larry-David-Bot
-    image: persona-bot:latest
-    container_name: kramer-bot
+    image: schtick:latest
+    container_name: schtick-kramer
     command: kramer
     restart: unless-stopped
     env_file: ./Larry-David-Bot/.env.kramer
     volumes:
       - ./Larry-David-Bot/data/kramer:/home/appuser/data
 
-  larry-david-bot:
+  schtick-larry-david:
     build: ./Larry-David-Bot
-    image: persona-bot:latest
-    container_name: larry-david-bot
+    image: schtick:latest
+    container_name: schtick-larry-david
     command: larry_david
     restart: unless-stopped
     env_file: ./Larry-David-Bot/.env.larry_david
@@ -188,14 +196,17 @@ sudo chown -R 1000:1000 data
 the parent stack file lives one directory above `Larry-David-Bot/`, next to
 `Kramer-Bot/` and `adguardhome/`).
 
-**g. Bring the bots up** (leave AdGuard alone):
+**g. Bring the bots up** (leave AdGuard alone). The service names changed
+(`larry-david-bot` → `schtick-larry-david`, `kramer-bot` → `schtick-kramer`),
+so include `--remove-orphans` to have Compose stop the old containers instead
+of leaving them running alongside the renamed ones:
 ```bash
-docker compose up -d --build larry-david-bot kramer-bot
+docker compose up -d --build --remove-orphans schtick-larry-david schtick-kramer
 ```
 
 **h. Verify.**
 ```bash
-docker compose logs -f larry-david-bot
+docker compose logs -f schtick-larry-david
 ```
 should show a `Logged in to Bluesky as ...` line followed by a posted quote.
 Then confirm the migration ran and history carried over:
@@ -203,7 +214,7 @@ Then confirm the migration ran and history carried over:
 ls data/larry_david/          # should show recent_posts_larry_david.json
 cat data/larry_david/recent_posts_larry_david.json | head -c 200
 ```
-Repeat for `kramer-bot` / `data/kramer/`.
+Repeat for `schtick-kramer` / `data/kramer/`.
 
 **i. Retire `Kramer-Bot` — only after both bots are confirmed healthy.**
 Once both containers have been up and posting successfully for a cycle or
@@ -217,8 +228,8 @@ on GitHub; everything it did now lives in `Larry-David-Bot`.
   file on the host at `data/<slug>/<slug>.log`.
 - **Restart after a code pull**:
   ```bash
-  docker compose up -d --build larry-david-bot
-  docker compose up -d --build kramer-bot
+  docker compose up -d --build schtick-larry-david
+  docker compose up -d --build schtick-kramer
   ```
 - **Permission denied writing to the data directory**: the container runs as
   uid 1000; re-run `sudo chown -R 1000:1000 data` (from inside whichever
@@ -232,8 +243,8 @@ on GitHub; everything it did now lives in `Larry-David-Bot`.
 ## Alternative: systemd
 
 If you'd rather run the bots as native processes instead of Docker
-containers, `deploy/persona-bot@.service` is a systemd template unit that
-runs `python -m persona_bot %i` per persona (e.g.
-`persona-bot@larry_david`), loading `.env.%i` via `EnvironmentFile`. This
+containers, `deploy/schtick@.service` is a systemd template unit that
+runs `python -m schtick %i` per persona (e.g.
+`schtick@larry_david`), loading `.env.%i` via `EnvironmentFile`. This
 isn't the setup in use on the Pi today; see the unit file and
-`persona_bot/__main__.py` for how it wires up if you need it.
+`schtick/__main__.py` for how it wires up if you need it.

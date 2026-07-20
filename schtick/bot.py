@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Persona Bot - A Bluesky/Twitter bot that posts fictional persona quotes.
+Schtick - A Bluesky/Twitter bot that posts fictional persona quotes.
 Posts on a schedule with modern-day observations and complaints.
 
-The persona (voice, prompt, fallbacks, config) is supplied as a module; see the
-persona module contract in personas/*.py.
+The persona (voice, prompt, fallbacks, config) is loaded from a character file;
+see the character contract in schtick/persona.py.
 """
 
 import os
@@ -23,6 +23,8 @@ try:
     from atproto import RichText
 except ImportError:  # Older atproto version without RichText helper
     RichText = None
+
+from schtick import generation
 
 logger = logging.getLogger(__name__)
 
@@ -125,34 +127,14 @@ class PersonaBot:
 
     def generate_quote(self) -> str:
         """Generate a new persona quote using Gemini."""
-        prompt = self.persona.PROMPT
-
         try:
             # Get last 10 recent posts to avoid repetition
             recent_quotes = self.recent_posts[-10:] if self.recent_posts else []
-            recent_quotes_text = "\n    - ".join([f'"{q}"' for q in recent_quotes])
 
             if recent_quotes:
                 logger.info(f"Including {len(recent_quotes)} recent quotes in prompt to avoid repetition")
 
-            formatted_prompt = prompt.format(recent_quotes_text=recent_quotes_text)
-
-            model = genai.GenerativeModel('gemini-flash-latest')
-            if self.persona.GENERATION_CONFIG:
-                response = model.generate_content(
-                    formatted_prompt,
-                    generation_config=genai.types.GenerationConfig(**self.persona.GENERATION_CONFIG),
-                )
-            else:
-                response = model.generate_content(formatted_prompt)
-
-            quote = response.text.strip()
-
-            # Clean up the quote
-            if quote.startswith('"') and quote.endswith('"'):
-                quote = quote[1:-1]
-
-            return quote
+            return generation.generate_quote(self.persona, recent_quotes)
 
         except Exception as e:
             logger.error(f"Error generating quote: {e}")

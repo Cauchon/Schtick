@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Test script for Persona Bot - generates quotes without posting to Bluesky.
+Test script for Schtick - generates quotes without posting to Bluesky.
 
 Usage:
-    python test_bot.py                 # check every persona in AVAILABLE_PERSONAS
+    python test_bot.py                 # check every available character
     python test_bot.py larry_david     # check only the named persona
 """
 
@@ -12,7 +12,8 @@ import sys
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-import personas
+from schtick import generation
+from schtick.persona import available_personas, load_persona
 
 # Load environment variables
 load_dotenv()
@@ -29,22 +30,8 @@ def test_quote_generation(persona):
 
     try:
         print("🤖 Testing Gemini API connection...")
-        model = genai.GenerativeModel('gemini-flash-latest')
-        # Use the same prompt the bot ships with (single source of truth).
-        formatted_prompt = persona.PROMPT.format(recent_quotes_text="")
-        if persona.GENERATION_CONFIG:
-            response = model.generate_content(
-                formatted_prompt,
-                generation_config=genai.types.GenerationConfig(**persona.GENERATION_CONFIG),
-            )
-        else:
-            response = model.generate_content(formatted_prompt)
-
-        quote = response.text.strip()
-
-        # Clean up the quote
-        if quote.startswith('"') and quote.endswith('"'):
-            quote = quote[1:-1]
+        # Generate via the shared engine (single source of truth), no history.
+        quote = generation.generate_quote(persona, [])
 
         print("✅ Gemini API connection successful!")
         print(f"📝 Generated quote: {quote}")
@@ -134,7 +121,7 @@ def test_persona(slug):
     print("=" * 50)
 
     try:
-        persona = personas.load_persona(slug)
+        persona = load_persona(slug)
     except ValueError as e:
         print(f"❌ {e}")
         return False, False
@@ -152,14 +139,14 @@ def test_persona(slug):
 
 def main():
     """Run all tests."""
-    print("🧪 Persona Bot Test Suite")
+    print("🧪 Schtick Test Suite")
     print("=" * 50)
 
     # Determine which personas to check
     if len(sys.argv) > 1:
         slugs = [sys.argv[1]]
     else:
-        slugs = list(personas.AVAILABLE_PERSONAS)
+        slugs = list(available_personas())
 
     # Environment variable checks run once (shared across personas)
     env_ok, twitter_status = test_environment_variables()

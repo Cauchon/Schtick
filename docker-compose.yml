@@ -21,25 +21,32 @@
 # First run: create the directories owned by the container's user (uid 1000),
 # otherwise the non-root process can't write to them:
 #   mkdir -p data/larry_david data/kramer && sudo chown -R 1000:1000 data
+#
+# Cutting over from the old service names (larry-david-bot, kramer-bot)? The
+# rename below means `docker compose up -d --build` alone leaves the old
+# containers running under their old names; add --remove-orphans to have
+# Compose stop and remove them:
+#   docker compose up -d --build --remove-orphans
 
 services:
-  larry-david-bot:
+  schtick-larry-david:
     build: .
-    image: persona-bot:latest
+    image: schtick:latest
     command: larry_david
     env_file: .env.larry_david
     volumes:
       - ./data/larry_david:/home/appuser/data
     restart: unless-stopped
 
-  kramer-bot:
+  schtick-kramer:
     build: .
-    image: persona-bot:latest
+    image: schtick:latest
     command: kramer
     env_file: .env.kramer
     volumes:
       - ./data/kramer:/home/appuser/data
     restart: unless-stopped
 
-# Add a third persona by copying one of the service blocks above (new slug for
+# Add a third persona: `python -m schtick new` scaffolds a characters/<slug>.md
+# file and prints a ready-to-paste service block for this file (new slug for
 # `command`, new `.env.<slug>` file, new data directory) -- see README.md.

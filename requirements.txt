@@ -1,6 +1,7 @@
 atproto
 google-generativeai
 python-dotenv==1.0.0
+PyYAML
 schedule==1.2.0
 requests==2.31.0
 tweepy
