@@ -9,3 +9,5 @@ recent_posts*.json
 deploy/
 *.md
 data/
+venv/
+.venv/
