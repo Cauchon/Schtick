@@ -6,6 +6,8 @@ Each character file is markdown with a YAML frontmatter block delimited by
     ---
     name: Larry David
     char_target: 240
+    provider: gemini      # optional; 'gemini' (default) or 'anthropic'
+    model: ...            # optional; defaults to the provider's model
     ---
     You are Larry David ...
 
@@ -21,6 +23,8 @@ from typing import List
 
 import yaml
 
+from schtick import providers
+
 
 @dataclass
 class Persona:
@@ -33,6 +37,8 @@ class Persona:
     GENERATION_CONFIG: dict = field(default_factory=dict)
     CHAR_TARGET: int = 240
     POST_INTERVAL_MINUTES: int = 214
+    PROVIDER: str = providers.DEFAULT_PROVIDER
+    MODEL: str = ""  # empty = the provider's default model
 
 
 def characters_dir() -> Path:
@@ -137,6 +143,12 @@ def load_persona(slug: str) -> Persona:
 
     fallbacks = meta.get("fallbacks") or []
 
+    provider = meta.get("provider") or providers.DEFAULT_PROVIDER
+    try:
+        providers.get_provider(provider)
+    except ValueError as e:
+        raise ValueError(f"Malformed character file {path.name}: {e}") from None
+
     return Persona(
         SLUG=slug,
         DISPLAY_NAME=name,
@@ -145,4 +157,6 @@ def load_persona(slug: str) -> Persona:
         GENERATION_CONFIG=generation_config,
         CHAR_TARGET=meta.get("char_target", 240),
         POST_INTERVAL_MINUTES=meta.get("post_interval_minutes", 214),
+        PROVIDER=provider,
+        MODEL=meta.get("model") or "",
     )

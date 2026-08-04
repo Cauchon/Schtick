@@ -10,7 +10,6 @@ Usage:
 import os
 import sys
 from dotenv import load_dotenv
-import google.generativeai as genai
 
 from schtick import generation
 from schtick.persona import available_personas, load_persona
@@ -20,20 +19,20 @@ load_dotenv()
 
 def test_quote_generation(persona):
     """Test the quote generation functionality for a persona."""
-    gemini_api_key = os.getenv('GEMINI_API_KEY')
-
-    if not gemini_api_key:
-        print("❌ GEMINI_API_KEY not found in environment variables")
+    try:
+        provider = generation.configure(persona)
+    except ValueError as e:
+        print(f"❌ {e}")
         return False
 
-    genai.configure(api_key=gemini_api_key)
+    model = persona.MODEL or provider.default_model
 
     try:
-        print("🤖 Testing Gemini API connection...")
+        print(f"🤖 Testing {provider.name} API connection ({model})...")
         # Generate via the shared engine (single source of truth), no history.
         quote = generation.generate_quote(persona, [])
 
-        print("✅ Gemini API connection successful!")
+        print(f"✅ {provider.name} API connection successful!")
         print(f"📝 Generated quote: {quote}")
         print(f"📏 Character count: {len(quote)}")
 
@@ -45,7 +44,7 @@ def test_quote_generation(persona):
         return True
 
     except Exception as e:
-        print(f"❌ Error testing Gemini API: {e}")
+        print(f"❌ Error testing {provider.name} API: {e}")
         return False
 
 def test_fallback_quotes(persona):
@@ -65,10 +64,11 @@ def test_environment_variables():
     """Test that all required environment variables are set."""
     print("🔧 Testing environment variables...")
 
+    # The AI provider's key is checked per persona (each character picks its
+    # own provider), so only the shared Bluesky credentials are required here.
     required_vars = [
         'BLUESKY_HANDLE',
         'BLUESKY_APP_PASSWORD',
-        'GEMINI_API_KEY'
     ]
 
     # Optional Twitter API variables
@@ -115,7 +115,7 @@ def test_environment_variables():
     return all_set, twitter_status
 
 def test_persona(slug):
-    """Run quote + fallback checks for a single persona. Returns (gemini_ok, fallback_ok)."""
+    """Run quote + fallback checks for a single persona. Returns (generation_ok, fallback_ok)."""
     print("=" * 50)
     print(f"🎭 Persona: {slug}")
     print("=" * 50)
@@ -129,13 +129,13 @@ def test_persona(slug):
     print(f"📛 {persona.DISPLAY_NAME} (slug: {persona.SLUG})")
     print()
 
-    # Test Gemini API
-    gemini_ok = test_quote_generation(persona)
+    # Test the character's AI provider
+    generation_ok = test_quote_generation(persona)
 
     # Test fallback quotes
     fallback_ok = test_fallback_quotes(persona)
 
-    return gemini_ok, fallback_ok
+    return generation_ok, fallback_ok
 
 def main():
     """Run all tests."""
@@ -155,8 +155,8 @@ def main():
     # Per-persona checks
     persona_results = {}
     for slug in slugs:
-        gemini_ok, fallback_ok = test_persona(slug)
-        persona_results[slug] = (gemini_ok, fallback_ok)
+        generation_ok, fallback_ok = test_persona(slug)
+        persona_results[slug] = (generation_ok, fallback_ok)
         print()
 
     # Summary
@@ -166,11 +166,11 @@ def main():
     print(f"Twitter API: {twitter_status}")
     print("\nPer-persona results:")
     all_personas_ok = True
-    for slug, (gemini_ok, fallback_ok) in persona_results.items():
+    for slug, (generation_ok, fallback_ok) in persona_results.items():
         print(f"  {slug}:")
-        print(f"    Gemini API: {'✅' if gemini_ok else '❌'}")
+        print(f"    Quote generation: {'✅' if generation_ok else '❌'}")
         print(f"    Fallback quotes: {'✅' if fallback_ok else '❌'}")
-        if not (gemini_ok and fallback_ok):
+        if not (generation_ok and fallback_ok):
             all_personas_ok = False
 
     if env_ok and all_personas_ok:
