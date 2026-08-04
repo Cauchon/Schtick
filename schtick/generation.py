@@ -1,12 +1,16 @@
-"""Shared quote generation via Gemini.
+"""Shared quote generation.
 
 Extracted from the old persona_bot/bot.py generate_quote() and
 test_bot.py test_quote_generation() so the bot and the test suite generate
-quotes identically. The caller is responsible for having already called
-``genai.configure(...)``.
+quotes identically. Which AI service does the writing is the character's
+choice (frontmatter ``provider``); see schtick/providers.py.
+
+Callers must call ``configure(persona)`` once before ``generate_quote``.
 """
 
-import google.generativeai as genai
+import os
+
+from schtick import providers
 
 # The token character files use to mark where the recent-quotes block goes.
 RECENT_QUOTES_PLACEHOLDER = "{recent_quotes_text}"
@@ -39,25 +43,36 @@ def build_prompt(persona, recent_quotes: list) -> str:
     return persona.PROMPT + trailer
 
 
+def configure(persona):
+    """Configure the client for ``persona``'s provider and return the provider.
+
+    The API key comes from the environment variable the provider declares, so
+    which key is required follows from the character file.
+
+    Raises ``ValueError`` naming the missing variable if it isn't set.
+    """
+    provider = providers.get_provider(persona.PROVIDER)
+    api_key = os.getenv(provider.api_key_env)
+    if not api_key:
+        raise ValueError(
+            f"Missing {provider.api_key_env} — {persona.SLUG} uses the "
+            f"'{provider.name}' provider (get a key at {provider.signup_url})."
+        )
+    provider.configure(api_key)
+    return provider
+
+
 def generate_quote(persona, recent_quotes: list) -> str:
     """Generate a single quote for ``persona``. Exceptions propagate to callers.
 
-    Preserves the legacy per-persona branch: if GENERATION_CONFIG is truthy it
-    is passed through as a GenerationConfig; if falsy, generate_content is
-    called with NO generation_config kwarg at all (Kramer's original behavior).
+    ``configure(persona)`` must have run first.
     """
     formatted_prompt = build_prompt(persona, recent_quotes)
 
-    model = genai.GenerativeModel('gemini-flash-latest')
-    if persona.GENERATION_CONFIG:
-        response = model.generate_content(
-            formatted_prompt,
-            generation_config=genai.types.GenerationConfig(**persona.GENERATION_CONFIG),
-        )
-    else:
-        response = model.generate_content(formatted_prompt)
+    provider = providers.get_provider(persona.PROVIDER)
+    model = persona.MODEL or provider.default_model
 
-    quote = response.text.strip()
+    quote = provider.generate(formatted_prompt, model, persona.GENERATION_CONFIG).strip()
 
     # Remove one pair of surrounding double quotes if present.
     if quote.startswith('"') and quote.endswith('"'):

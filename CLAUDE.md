@@ -20,10 +20,18 @@ behavior, it belongs in its character file as data the engine already reads.
   directory relative to the package location, not cwd — overridable via
   `SCHTICK_CHARACTERS_DIR`, needed because Docker's cwd is
   `/home/appuser/data`, not the repo.
-- `schtick/generation.py` — Gemini generation logic shared by all personas.
+- `schtick/generation.py` — prompt building + provider dispatch, shared by all
+  personas. `configure(persona)` resolves the provider's API key from the env
+  and must run before `generate_quote`.
+- `schtick/providers.py` — the AI services. One class per provider
+  (`gemini`, `anthropic`), registered in `PROVIDERS`; each declares its
+  `api_key_env`, `default_model`, and `generate()`. SDK imports are lazy so a
+  checkout only needs the package for the provider it uses. Adding a provider
+  = a class here, nothing else.
 - `characters/<slug>.md` — a YAML frontmatter block (`name`, `char_target`,
-  `post_interval_minutes`, optional `generation`, optional `fallbacks`)
-  followed by the character prompt as the file body, preserved verbatim.
+  `post_interval_minutes`, optional `provider`, `model`, `generation`,
+  `fallbacks`) followed by the character prompt as the file body, preserved
+  verbatim.
 
 Adding a persona = one new `characters/<slug>.md` file + a compose service.
 No engine changes.
@@ -37,15 +45,24 @@ the explicit form of running the posting scheduler for a slug.
 
 ## Gotchas
 
-- **Gemini quota is shared and limited.** Both `test_bot.py` and the `preview`
-  subcommand make real generation calls. Use them sparingly — at most once per
-  session, and only when a change touches the generation path; pass a slug to
-  halve the calls. Everything else verifies offline via `py_compile` /
+- **Generation quota costs real money/limits.** Both `test_bot.py` and the
+  `preview` subcommand make real generation calls. Use them sparingly — at most
+  once per session, and only when a change touches the generation path; pass a
+  slug to halve the calls. Everything else verifies offline via `py_compile` /
   imports / rendering the prompt with an empty recent-quotes list.
 - **A missing `generation` key is meaningful.** Kramer's frontmatter
-  deliberately omits `generation`; absent means no `generation_config` is
-  passed to Gemini at all, matching his pre-consolidation behavior. Don't
-  "normalize" it by adding one.
+  deliberately omits `generation`; for the Gemini provider, absent means no
+  `generation_config` is passed to Gemini at all, matching his
+  pre-consolidation behavior. Don't "normalize" it by adding one.
+- **`generation` is provider-native passthrough, not a portable schema.** It
+  goes straight into `generate_content` (Gemini) or `messages.create`
+  (Anthropic). `temperature` works on Gemini and 400s on current Claude
+  models; `max_tokens` is Anthropic-only. Changing a character's `provider`
+  means re-checking its `generation` block.
+- **The Anthropic provider leaves thinking on** and defaults `max_tokens` to
+  4096 because thinking and the visible answer share that ceiling — a
+  quote-sized budget truncates the reply. Disabling thinking is worse here:
+  it can leak `<thinking>` tags into text we post verbatim.
 - **Character prompt bodies were ported byte-identical** from the two
   original bots into `characters/*.md`. Treat any edit to a character body as
   a voice change the user should sign off on, not a cleanup.

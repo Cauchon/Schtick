@@ -29,6 +29,7 @@ import logging
 
 from dotenv import load_dotenv
 
+from schtick import providers
 from schtick.persona import load_persona, available_personas, characters_dir
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,8 @@ Usage:
   python -m schtick list                    List your characters
   python -m schtick preview <slug> [-n N]   Hear a character before going live
                                             (generates N quotes without posting;
-                                            each is one Gemini call on a shared
-                                            quota. N defaults to 1.)
+                                            each is one live API call against the
+                                            character's provider. N defaults to 1.)
   python -m schtick run <slug>              Start the bot (posts on a schedule)
   python -m schtick <slug>                  Same as 'run <slug>' (used by Docker)
 
@@ -206,21 +207,20 @@ def cmd_preview(args):
         print(e)
         sys.exit(1)
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        print(
-            f"Missing GEMINI_API_KEY. Add it to {env_file} and try again "
-            "(get a free key at aistudio.google.com)."
-        )
-        sys.exit(1)
-
     # Import after env loading, mirroring the bot's late imports.
-    import google.generativeai as genai
     from schtick import generation
 
-    genai.configure(api_key=api_key)
+    try:
+        provider = generation.configure(persona)
+    except ValueError as e:
+        print(f"{e}\nAdd it to {env_file} and try again.")
+        sys.exit(1)
 
-    print(f"Previewing {persona.DISPLAY_NAME} ({count} quote{'s' if count != 1 else ''}):\n")
+    model = persona.MODEL or provider.default_model
+    print(
+        f"Previewing {persona.DISPLAY_NAME} via {provider.name} ({model}) — "
+        f"{count} quote{'s' if count != 1 else ''}:\n"
+    )
     for idx in range(count):
         try:
             quote = generation.generate_quote(persona, [])
@@ -242,7 +242,7 @@ def cmd_preview(args):
 CHARACTER_TEMPLATE = """\
 ---
 name: <Name>
-char_target: 240
+<PROVIDER_LINE>char_target: 240
 post_interval_minutes: 214
 fallbacks:
   - "A line <Name> would actually say."
@@ -290,8 +290,8 @@ ENV_TEMPLATE = """\
 BLUESKY_HANDLE={handle}
 BLUESKY_APP_PASSWORD={app_password}
 
-# Gemini API key for quote generation
-GEMINI_API_KEY={gemini_key}
+# API key for quote generation ({provider})
+{api_key_env}={api_key}
 
 # Optional X/Twitter credentials — not set up by the wizard.
 # See env.example if you also want to post to X/Twitter.
@@ -322,6 +322,16 @@ def cmd_new(args):
         sys.exit(1)
 
 
+def _choose_provider() -> object:
+    """Ask which AI service writes the quotes. Enter accepts the default."""
+    print("\nWhich AI writes the quotes?")
+    print("  1. Gemini (Google) — free tier available  [default]")
+    print("  2. Claude (Anthropic)")
+    choice = input("Pick 1 or 2:  ").strip()
+    name = "anthropic" if choice == "2" else providers.DEFAULT_PROVIDER
+    return providers.get_provider(name)
+
+
 def _run_wizard():
     print("Let's make a new character.\n")
 
@@ -342,9 +352,19 @@ def _run_wizard():
         print("Pick a different name, or edit that file directly.")
         sys.exit(1)
 
+    provider = _choose_provider()
+
     # --- Write the starter character file --------------------------------- #
+    # The provider line is only written when it isn't the default, so a plain
+    # character file stays as short as possible.
+    provider_line = (
+        "" if provider.name == providers.DEFAULT_PROVIDER else f"provider: {provider.name}\n"
+    )
     directory.mkdir(parents=True, exist_ok=True)
-    char_path.write_text(CHARACTER_TEMPLATE.replace("<Name>", name), encoding="utf-8")
+    char_path.write_text(
+        CHARACTER_TEMPLATE.replace("<Name>", name).replace("<PROVIDER_LINE>", provider_line),
+        encoding="utf-8",
+    )
     print(f"\nCreated {char_path}")
     print("  (It's a template — you'll fill in the voice in a minute.)")
 
@@ -357,15 +377,17 @@ def _run_wizard():
     ).strip()
     print("  App password — make one at bsky.app → Settings → App Passwords.")
     app_password = getpass.getpass("Bluesky app password (hidden):  ").strip()
-    print("  Gemini key — get one free at aistudio.google.com.")
-    gemini_key = getpass.getpass("Gemini API key (hidden):  ").strip()
+    print(f"  {provider.name} key — get one at {provider.signup_url}.")
+    api_key = getpass.getpass(f"{provider.api_key_env} (hidden):  ").strip()
 
     env_content = ENV_TEMPLATE.format(
         name=name,
         slug=slug,
         handle=handle or "your-handle.bsky.social",
         app_password=app_password or "your-app-password",
-        gemini_key=gemini_key or "your-gemini-api-key",
+        provider=provider.name,
+        api_key_env=provider.api_key_env,
+        api_key=api_key or f"your-{provider.name}-api-key",
     )
     env_path = f".env.{slug}"
     with open(env_path, "w", encoding="utf-8") as f:

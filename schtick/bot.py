@@ -16,7 +16,6 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 import random
 
-import google.generativeai as genai
 import tweepy
 from atproto import Client
 try:
@@ -63,13 +62,13 @@ class PersonaBot:
         self.handle = os.getenv('BLUESKY_HANDLE')
         self.app_password = os.getenv('BLUESKY_APP_PASSWORD')
 
-        # Gemini configuration
-        self.gemini_api_key = os.getenv('GEMINI_API_KEY')
+        if not all([self.handle, self.app_password]):
+            raise ValueError("Missing required environment variables. Check BLUESKY_HANDLE and BLUESKY_APP_PASSWORD")
 
-        if not all([self.handle, self.app_password, self.gemini_api_key]):
-            raise ValueError("Missing required environment variables. Check BLUESKY_HANDLE, BLUESKY_APP_PASSWORD, and GEMINI_API_KEY")
-
-        genai.configure(api_key=self.gemini_api_key)
+        # AI provider — which one, and therefore which API key is required,
+        # comes from the character file. Raises ValueError naming the key.
+        self.provider = generation.configure(persona)
+        logger.info(f"Generating with {self.provider.name} ({persona.MODEL or self.provider.default_model})")
 
         # Login to Bluesky
         self.client.login(self.handle, self.app_password)
@@ -126,7 +125,7 @@ class PersonaBot:
             logger.error(f"Could not save recent posts cache: {e}")
 
     def generate_quote(self) -> str:
-        """Generate a new persona quote using Gemini."""
+        """Generate a new persona quote using the character's AI provider."""
         try:
             # Get last 10 recent posts to avoid repetition
             recent_quotes = self.recent_posts[-10:] if self.recent_posts else []
