@@ -124,10 +124,11 @@ def test_load_env_falls_back_to_the_shared_file(tmp_path, monkeypatch, recorded_
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("SHARED=generic\n", encoding="utf-8")
 
-    # The fallback calls load_dotenv() with no path, letting python-dotenv find
-    # the file itself.
+    # The fallback names ".env" explicitly rather than calling load_dotenv()
+    # bare: find_dotenv() walks up from the *package* directory, not the cwd,
+    # and could load an unrelated .env from outside it.
     assert cli._load_env("aunt_carol") == ".env"
-    assert recorded_dotenv == [((), {})]
+    assert recorded_dotenv == [((".env",), {})]
 
 
 def test_load_env_reports_the_shared_file_even_when_neither_exists(
@@ -136,6 +137,17 @@ def test_load_env_reports_the_shared_file_even_when_neither_exists(
     monkeypatch.chdir(tmp_path)
 
     # The return value names where the values *would* live, for error messages.
+    assert cli._load_env("aunt_carol") == ".env"
+    # Still a cwd-relative path: python-dotenv returns False for a missing file.
+    assert recorded_dotenv == [((".env",), {})]
+
+
+def test_load_env_is_a_silent_no_op_when_no_env_file_exists(tmp_path, monkeypatch):
+    # Not stubbed: the real python-dotenv must tolerate a missing file without
+    # raising or warning, which is what makes the unconditional fallback safe.
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.load_dotenv(".env") is False
     assert cli._load_env("aunt_carol") == ".env"
 
 

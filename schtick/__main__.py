@@ -60,6 +60,13 @@ PERSONA environment variable instead of passing a slug."""
 def _load_env(slug: str) -> str:
     """Load env vars for ``slug``, preferring ``.env.<slug>`` over ``.env``.
 
+    Both paths are relative to the working directory, deliberately: a bare
+    ``load_dotenv()`` would call ``find_dotenv()``, which walks up from the
+    *package* directory and can pick up an unrelated ``.env`` outside the
+    directory the bot was started in. python-dotenv returns False (silently)
+    when the named file is missing, so the fallback is a no-op if there is no
+    ``.env`` here.
+
     Returns the path of the file that was loaded (or would hold the values), so
     callers can name it in error messages.
     """
@@ -67,7 +74,7 @@ def _load_env(slug: str) -> str:
     if os.path.exists(persona_env):
         load_dotenv(persona_env)
         return persona_env
-    load_dotenv()
+    load_dotenv(".env")
     return ".env"
 
 
