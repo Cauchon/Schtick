@@ -49,7 +49,11 @@ the explicit form of running the posting scheduler for a slug.
   `preview` subcommand make real generation calls. Use them sparingly — at most
   once per session, and only when a change touches the generation path; pass a
   slug to halve the calls. Everything else verifies offline via `py_compile` /
-  imports / rendering the prompt with an empty recent-quotes list.
+  imports / rendering the prompt with an empty recent-quotes list. When a live
+  call is warranted, route it through DeepSeek rather than Gemini — the Gemini
+  quota is reserved for the running bots. Point a scratch copy of a character
+  at `provider: deepseek` via `SCHTICK_CHARACTERS_DIR` so no committed
+  character file changes.
 - **A missing `generation` key is meaningful.** Kramer's frontmatter
   deliberately omits `generation`; for the Gemini provider, absent means no
   `generation_config` is passed to Gemini at all, matching his
@@ -70,7 +74,6 @@ the explicit form of running the posting scheduler for a slug.
   despite nothing here using OpenAI models. Unlike Anthropic it needs no
   `max_tokens` floor — `deepseek-reasoner` returns its reasoning in a separate
   `reasoning_content` field, so `.content` is already the postable answer.
-
 - **Character prompt bodies were ported byte-identical** from the two
   original bots into `characters/*.md`. Treat any edit to a character body as
   a voice change the user should sign off on, not a cleanup.
