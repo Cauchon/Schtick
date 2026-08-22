@@ -253,6 +253,22 @@ def test_generate_quote_keeps_an_unpaired_quote(fake_provider, reply):
     assert generation.generate_quote(StubPersona(), []) == reply
 
 
+def test_generate_quote_keeps_a_lone_double_quote_character(fake_provider):
+    # A single `"` both starts and ends with a double quote; without a length
+    # guard the strip would eat it and hand the bot an empty quote.
+    fake_provider.reply = '"'
+
+    assert generation.generate_quote(StubPersona(), []) == '"'
+
+
+def test_generate_quote_strips_an_empty_quoted_string_to_empty(fake_provider):
+    # Two characters IS a real pair, so this one is stripped — the guard is
+    # about length 1, not about the result being empty.
+    fake_provider.reply = '""'
+
+    assert generation.generate_quote(StubPersona(), []) == ""
+
+
 def test_generate_quote_propagates_provider_errors(fake_provider):
     def boom(prompt, model, config):
         raise RuntimeError("provider is down")

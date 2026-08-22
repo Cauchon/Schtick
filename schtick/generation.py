@@ -74,8 +74,11 @@ def generate_quote(persona, recent_quotes: list) -> str:
 
     quote = provider.generate(formatted_prompt, model, persona.GENERATION_CONFIG).strip()
 
-    # Remove one pair of surrounding double quotes if present.
-    if quote.startswith('"') and quote.endswith('"'):
+    # Remove one pair of surrounding double quotes if present. The length guard
+    # keeps a lone `"` from being read as its own opening AND closing quote,
+    # which would strip the whole reply to "" — an empty post the bot would then
+    # have to reject.
+    if len(quote) >= 2 and quote.startswith('"') and quote.endswith('"'):
         quote = quote[1:-1]
 
     return quote
