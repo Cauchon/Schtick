@@ -145,12 +145,12 @@ model: claude-opus-5    # optional — omit for claude-sonnet-5
 ```
 
 `generation` is passed straight through to that provider's API call, so its keys
-are provider-specific: `temperature: 1.1` for Gemini, but `max_tokens: 2048` or
+are provider-specific: `thinking_level: low` for Gemini 3, `max_tokens: 2048` or
 `output_config: {effort: low}` for Anthropic, and the OpenAI-shaped names
 (`temperature`, `max_tokens`, `top_p`) for DeepSeek. Current Claude models
-**reject** `temperature`, `top_p`, and `top_k` — steer the voice in the prompt
-instead. If you switch a character's provider, check its `generation` block
-still applies.
+**reject** `temperature`, `top_p`, and `top_k`, and Gemini 3.x models deprecate
+them — steer the voice in the prompt instead. If you switch a character's
+provider, check its `generation` block still applies.
 
 One DeepSeek note: it honors the "under N characters" rule most of the time
 but occasionally runs long. The engine rejects anything over Bluesky's

@@ -280,7 +280,9 @@ def test_larry_david_loads(real_characters):
     assert larry.SLUG == "larry_david"
     assert larry.DISPLAY_NAME == "Larry David"
     assert larry.PROVIDER == "gemini"
-    assert larry.GENERATION_CONFIG == {"temperature": 1.1}
+    # No `generation` block: Gemini 3.x deprecates temperature/top_p/top_k, so
+    # the old `temperature: 1.1` was dropped — see CLAUDE.md.
+    assert not larry.GENERATION_CONFIG
     assert larry.FALLBACK_QUOTES
     assert larry.PROMPT.startswith("You are Larry David")
 

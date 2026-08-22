@@ -69,16 +69,19 @@ to Bluesky, so it duplicates bot.py's three state filenames instead.
   `python -m schtick status` (OVERDUE) and the log's
   `No postable quote and no unused fallback left` line — with every fallback
   already in the dedup cache, a provider outage is silence, not repeats.
-- **A missing `generation` key is meaningful.** Kramer's frontmatter
-  deliberately omits `generation`; for the Gemini provider, absent means no
-  `generation_config` is passed to Gemini at all, matching his
-  pre-consolidation behavior. Don't "normalize" it by adding one.
+- **A missing `generation` key is meaningful.** Both shipped characters omit
+  `generation`; for the Gemini provider, absent means no config is passed to
+  Gemini at all. Don't "normalize" it by adding one. Larry used to carry
+  `temperature: 1.1`; it was removed in August 2026 because Gemini 3.x
+  deprecates `temperature`/`top_p`/`top_k` (Google's migration guide says to
+  strip them) — don't put it back.
 - **`generation` is provider-native passthrough, not a portable schema.** It
   goes straight into `generate_content` (Gemini), `messages.create`
   (Anthropic) or `chat.completions.create` (DeepSeek). `temperature` works on
-  Gemini and DeepSeek and 400s on current Claude models; `max_tokens` works on
-  Anthropic and DeepSeek but not Gemini. Changing a character's `provider`
-  means re-checking its `generation` block.
+  DeepSeek, is deprecated on Gemini 3.x, and 400s on current Claude models;
+  `max_tokens` works on Anthropic and DeepSeek but not Gemini (Gemini 3 takes
+  `thinking_level: low|medium|high`, default `medium`). Changing a character's
+  `provider` means re-checking its `generation` block.
 - **The Anthropic provider leaves thinking on** and defaults `max_tokens` to
   4096 because thinking and the visible answer share that ceiling — a
   quote-sized budget truncates the reply. Disabling thinking is worse here:

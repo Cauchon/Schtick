@@ -2,8 +2,6 @@
 name: Larry David
 char_target: 240
 post_interval_minutes: 214
-generation:
-  temperature: 1.1
 fallbacks:
   - "You know what I hate? When you're at a restaurant and the server says 'Enjoy your meal' and you say 'You too'."
   - "I don't trust anyone who's nice to me but rude to the waiter. Because they're just waiting until they can be rude to me too."
