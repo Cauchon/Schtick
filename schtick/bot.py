@@ -12,8 +12,9 @@ import json
 import time
 import schedule
 import logging
+import logging.handlers
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Iterable, List, Optional
 import random
 
 import tweepy
@@ -27,21 +28,91 @@ from schtick import generation
 
 logger = logging.getLogger(__name__)
 
+# Hard platform limits. Bluesky rejects the post outright above 300 graphemes;
+# len() over-counts graphemes, so testing the string length is conservative.
+BLUESKY_CHAR_LIMIT = 300
+TWITTER_CHAR_LIMIT = 280
+
+LOG_MAX_BYTES = 1_000_000
+LOG_BACKUP_COUNT = 3
+
 
 def configure_logging(slug: str):
     """Configure logging to a persona-specific log file and the console.
 
     Done in a function (not at import time) because the log filename depends on
-    the persona slug.
+    the persona slug. The file handler rotates: the bot runs for months on a
+    Raspberry Pi SD card, where an unbounded log eventually fills the card.
     """
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(f'{slug}.log'),
+            logging.handlers.RotatingFileHandler(
+                f'{slug}.log',
+                maxBytes=LOG_MAX_BYTES,
+                backupCount=LOG_BACKUP_COUNT,
+            ),
             logging.StreamHandler()
         ]
     )
+
+
+def rejection_reason(quote: str, recent_posts: List[str],
+                     limit: int = BLUESKY_CHAR_LIMIT) -> Optional[str]:
+    """Return why ``quote`` cannot be posted, or None if it can be.
+
+    The reason is a human-readable fragment for the log line.
+    """
+    if not quote or not quote.strip():
+        return "empty"
+    if quote in recent_posts:
+        return "duplicate"
+    if len(quote) > limit:
+        return f"{len(quote)} chars, over the {limit}-character limit"
+    return None
+
+
+def choose_quote(candidates: Iterable[str], recent_posts: List[str],
+                 fallbacks: List[str],
+                 limit: int = BLUESKY_CHAR_LIMIT) -> Optional[str]:
+    """Pick a postable quote, or None if there is nothing safe to post.
+
+    ``candidates`` is consumed lazily so the caller can stop paying for
+    generation as soon as one is accepted; exhausting it — including yielding
+    nothing at all, which is how a caller signals a failing provider — falls
+    through to the character's fallbacks. Fallbacks are held to the same rules
+    as generated quotes, so an outage can no longer walk the bot through its
+    fallback list and then start repeating it.
+    """
+    for attempt, candidate in enumerate(candidates, start=1):
+        reason = rejection_reason(candidate, recent_posts, limit)
+        if reason is None:
+            return candidate
+        logger.info(f"Rejected generated quote ({reason}), trying again (attempt {attempt})")
+
+    usable = [q for q in fallbacks if rejection_reason(q, recent_posts, limit) is None]
+    if not usable:
+        return None
+    logger.warning(f"No usable generated quote; falling back ({len(usable)} unused fallbacks left)")
+    return random.choice(usable)
+
+
+def next_post_delay(last_post_time: Optional[datetime], interval_minutes: int,
+                    now: datetime) -> Optional[timedelta]:
+    """Return how long to wait before the first post, or None to post now.
+
+    Measured from ``last_post_time``, not from ``now``, so a restart neither
+    fires an extra post nor slides the cadence forward.
+    """
+    if last_post_time is None:
+        return None
+    due = last_post_time + timedelta(minutes=interval_minutes)
+    if due <= now:
+        return None
+    # A clock or container-timezone shift can leave a timestamp in the future;
+    # capping the wait at one interval keeps that from stalling the bot for hours.
+    return min(due - now, timedelta(minutes=interval_minutes))
 
 
 class PersonaBot:
@@ -55,6 +126,7 @@ class PersonaBot:
         self.client = Client()
         self.posts_cache_file = f'recent_posts_{persona.SLUG}.json'
         self.legacy_cache_file = 'recent_posts.json'
+        self.last_post_file = f'last_post_{persona.SLUG}.json'
         self.max_cache_size = 100  # Keep last 100 posts to avoid repeats
         self.recent_posts = self.load_recent_posts()
 
@@ -124,8 +196,30 @@ class PersonaBot:
         except Exception as e:
             logger.error(f"Could not save recent posts cache: {e}")
 
-    def generate_quote(self) -> str:
-        """Generate a new persona quote using the character's AI provider."""
+    def load_last_post_time(self) -> Optional[datetime]:
+        """Return the time of the last successful post, or None if unrecorded."""
+        try:
+            if os.path.exists(self.last_post_file):
+                with open(self.last_post_file, 'r') as f:
+                    return datetime.fromisoformat(json.load(f)['last_post'])
+        except Exception as e:
+            logger.warning(f"Could not read {self.last_post_file}: {e}")
+        return None
+
+    def save_last_post_time(self, when: Optional[datetime] = None):
+        """Record the time of a successful post so a restart can skip ahead.
+
+        Naive local time, matching what ``schedule`` compares against.
+        """
+        when = when or datetime.now()
+        try:
+            with open(self.last_post_file, 'w') as f:
+                json.dump({'last_post': when.isoformat()}, f)
+        except Exception as e:
+            logger.error(f"Could not save {self.last_post_file}: {e}")
+
+    def generate_quote(self) -> Optional[str]:
+        """Generate a new persona quote, or None if the provider errored."""
         try:
             # Get last 10 recent posts to avoid repetition
             recent_quotes = self.recent_posts[-10:] if self.recent_posts else []
@@ -137,15 +231,19 @@ class PersonaBot:
 
         except Exception as e:
             logger.error(f"Error generating quote: {e}")
-            return self.get_fallback_quote()
+            return None
 
-    def get_fallback_quote(self) -> str:
-        """Return a fallback persona quote if AI generation fails."""
-        return random.choice(self.persona.FALLBACK_QUOTES)
+    def _candidates(self, max_attempts: int) -> Iterable[str]:
+        """Yield up to ``max_attempts`` generated quotes, stopping on an error.
 
-    def is_duplicate(self, quote: str) -> bool:
-        """Check if a quote is a duplicate of recent posts."""
-        return quote in self.recent_posts
+        A generation error ends the run rather than retrying: the provider is
+        down or over quota, and further attempts only burn quota to fail again.
+        """
+        for _ in range(max_attempts):
+            quote = self.generate_quote()
+            if quote is None:
+                return
+            yield quote
 
     def post_to_twitter(self, quote: str) -> bool:
         """Post the quote to Twitter (X) using API v2. Returns True on success."""
@@ -153,11 +251,16 @@ class PersonaBot:
             logger.info("Twitter client not configured; skipping tweet.")
             return False
 
-        # Twitter has 280-character limit
-        tweet_text = quote[:280]
+        # Truncating would post half a joke under the character's name, so an
+        # over-length quote loses the tweet, not its ending. Bluesky's 300 is
+        # the looser limit, so this is reachable with a legitimately posted quote.
+        if len(quote) > TWITTER_CHAR_LIMIT:
+            logger.warning(f"Quote is {len(quote)} characters, over Twitter's "
+                           f"{TWITTER_CHAR_LIMIT}-character limit; skipping the tweet.")
+            return False
 
         try:
-            response = self.twitter_client.create_tweet(text=tweet_text)
+            response = self.twitter_client.create_tweet(text=quote)
             if response and response.data and response.data.get('id'):
                 logger.info(f"Successfully tweeted quote (ID: {response.data['id']})")
                 return True
@@ -215,23 +318,25 @@ class PersonaBot:
         if len(self.recent_posts) > self.max_cache_size:
             self.recent_posts = self.recent_posts[-self.max_cache_size:]
         self.save_recent_posts()
+        self.save_last_post_time()
         logger.info(f"Posted to Bluesky: {text}")
         return True
 
     def post_quote(self):
         """Generate and post a new persona quote to Bluesky."""
         try:
-            # Generate a unique quote
             max_attempts = 10
-            for attempt in range(max_attempts):
-                quote = self.generate_quote()
+            quote = choose_quote(
+                self._candidates(max_attempts),
+                self.recent_posts,
+                self.persona.FALLBACK_QUOTES,
+            )
 
-                if not self.is_duplicate(quote):
-                    break
-                logger.info(f"Generated duplicate quote, trying again (attempt {attempt + 1})")
-            else:
-                logger.warning("Could not generate unique quote after max attempts, using fallback")
-                quote = self.get_fallback_quote()
+            if quote is None:
+                # Every fallback is spent (or over-length): repeating one is
+                # worse than staying quiet until the next slot.
+                logger.warning("No postable quote and no unused fallback left; skipping this post.")
+                return False
 
             # Post to Bluesky
             self.post_to_bluesky(quote)
@@ -251,11 +356,21 @@ class PersonaBot:
         logger.info(f"Starting {self.persona.DISPLAY_NAME} Bot scheduler...")
 
         # Schedule posts on the persona's configured interval
-        schedule.every(self.persona.POST_INTERVAL_MINUTES).minutes.do(self.post_quote)
+        interval = self.persona.POST_INTERVAL_MINUTES
+        job = schedule.every(interval).minutes.do(self.post_quote)
 
-        # Post immediately on startup
-        logger.info("Posting initial quote...")
-        self.post_quote()
+        # The container restarts on its own (restart: unless-stopped) and gets
+        # redeployed by hand, so an unconditional startup post turns a crash
+        # loop into a posting spree.
+        delay = next_post_delay(self.load_last_post_time(), interval, datetime.now())
+        if delay is None:
+            logger.info("No post on record within the interval; posting initial quote...")
+            self.post_quote()
+        else:
+            job.next_run = datetime.now() + delay
+            logger.info(f"Posted less than {interval} minutes ago; skipping the startup post. "
+                        f"Next post at {job.next_run:%Y-%m-%d %H:%M:%S} "
+                        f"(in {int(delay.total_seconds() // 60)} min).")
 
         # Run the scheduler
         while True:

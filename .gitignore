@@ -5,4 +5,5 @@ __pycache__/
 *.log
 recent_posts.json
 recent_posts_*.json
+last_post_*.json
 data/
