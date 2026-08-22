@@ -1,9 +1,9 @@
 """Shared quote generation.
 
-Extracted from the old persona_bot/bot.py generate_quote() and
-test_bot.py test_quote_generation() so the bot and the test suite generate
-quotes identically. Which AI service does the writing is the character's
-choice (frontmatter ``provider``); see schtick/providers.py.
+The single generation path shared by the bot and the ``preview`` subcommand,
+so what you hear in a preview is exactly what the bot would post. Which AI
+service does the writing is the character's choice (frontmatter
+``provider``); see schtick/providers.py.
 
 Callers must call ``configure(persona)`` once before ``generate_quote``.
 """

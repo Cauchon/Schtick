@@ -91,6 +91,17 @@ the explicit form of running the posting scheduler for a slug.
   returns `None` when nothing is postable — `post_quote` then skips the slot.
   A generation error ends the candidate stream immediately (one failed call,
   not ten) and goes straight to the unused fallbacks.
+- **A post only counts if Bluesky took it.** `post_quote` returns False and
+  skips the tweet when the Bluesky post fails; nothing is cached or
+  timestamped, so the same quote may legitimately go out next slot. The
+  Gemini provider also raises the `google_genai.models` logger to ERROR in
+  `configure()` — the SDK otherwise logs an "automatic function calling"
+  warning on every call.
+- **DeepSeek respects the length target most of the time, not always.** In a
+  9-sample check every quote was 87–201 chars, but one earlier sample hit 427.
+  The 300-char rejection in `choose_quote` handles that tail; don't "fix" it
+  with a small `max_tokens`, which truncates mid-sentence into something that
+  passes the length check and posts broken.
 - **`pyproject.toml` declares ranges; `requirements.txt` is the lock** the
   Docker image installs (every line pinned, resolved on 3.12). Add a
   dependency in both. `requests` is deliberately not a direct dependency —
@@ -120,7 +131,9 @@ Container runs as non-root uid 1000, so host `data/` dirs need
 
 ## History
 
-Consolidated from two near-identical repos in July 2026. The `Kramer-Bot`
-repo is superseded and should be archived once the Pi runs both bots from
-this checkout. Later in July 2026, renamed to Schtick and migrated personas
-from `personas/*.py` modules to `characters/*.md` files.
+Consolidated from two near-identical repos in July 2026; the superseded
+`Kramer-Bot` repo is archived on GitHub. Later in July 2026, renamed to
+Schtick and migrated personas from `personas/*.py` modules to
+`characters/*.md` files. August 2026: a file-based web dashboard was built
+and then deliberately removed (not worth its attack surface or upkeep);
+`python -m schtick status` is the lightweight replacement.

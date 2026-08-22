@@ -152,6 +152,12 @@ are provider-specific: `temperature: 1.1` for Gemini, but `max_tokens: 2048` or
 instead. If you switch a character's provider, check its `generation` block
 still applies.
 
+One DeepSeek note: it honors the "under N characters" rule most of the time
+but occasionally runs long. The engine rejects anything over Bluesky's
+300-character limit and regenerates, so you don't need to cap `max_tokens` —
+and a small cap is worse than the overrun, because it truncates mid-sentence
+into a short, broken line that passes the length check.
+
 ## Running your cast
 
 One checkout can run several characters side by side. The wizard already gave
