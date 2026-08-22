@@ -235,10 +235,6 @@ python -m pytest                  # the offline test suite
 The suite is hermetic — no network, no API keys, no posting — so it's safe to
 run as often as you like. CI runs it on Python 3.11 and 3.12.
 
-## License
-
-Open source. Use it, fork it, cast whoever you want.
-
 ---
 
 *"You know what I like about this bot? It's like having me in your pocket, but without the social anxiety."* — Larry David
