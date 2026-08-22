@@ -327,8 +327,9 @@ def _choose_provider() -> object:
     print("\nWhich AI writes the quotes?")
     print("  1. Gemini (Google) — free tier available  [default]")
     print("  2. Claude (Anthropic)")
-    choice = input("Pick 1 or 2:  ").strip()
-    name = "anthropic" if choice == "2" else providers.DEFAULT_PROVIDER
+    print("  3. DeepSeek")
+    choice = input("Pick 1, 2 or 3:  ").strip()
+    name = {"2": "anthropic", "3": "deepseek"}.get(choice, providers.DEFAULT_PROVIDER)
     return providers.get_provider(name)
 
 

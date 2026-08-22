@@ -23,6 +23,8 @@ dependencies = [
     "atproto>=0.0.71,<0.1",
     "google-genai>=2.19,<3",
     "anthropic>=1.0,<2",
+    # DeepSeek has no SDK of its own — it speaks the OpenAI wire protocol.
+    "openai>=3.3,<4",
     "python-dotenv>=1.0,<2",
     "PyYAML>=6.0,<7",
     "schedule>=1.2,<2",

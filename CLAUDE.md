@@ -24,7 +24,7 @@ behavior, it belongs in its character file as data the engine already reads.
   personas. `configure(persona)` resolves the provider's API key from the env
   and must run before `generate_quote`.
 - `schtick/providers.py` — the AI services. One class per provider
-  (`gemini`, `anthropic`), registered in `PROVIDERS`; each declares its
+  (`gemini`, `anthropic`, `deepseek`), registered in `PROVIDERS`; each declares its
   `api_key_env`, `default_model`, and `generate()`. SDK imports are lazy so a
   checkout only needs the package for the provider it uses. Adding a provider
   = a class here, nothing else.
@@ -55,14 +55,22 @@ the explicit form of running the posting scheduler for a slug.
   `generation_config` is passed to Gemini at all, matching his
   pre-consolidation behavior. Don't "normalize" it by adding one.
 - **`generation` is provider-native passthrough, not a portable schema.** It
-  goes straight into `generate_content` (Gemini) or `messages.create`
-  (Anthropic). `temperature` works on Gemini and 400s on current Claude
-  models; `max_tokens` is Anthropic-only. Changing a character's `provider`
+  goes straight into `generate_content` (Gemini), `messages.create`
+  (Anthropic) or `chat.completions.create` (DeepSeek). `temperature` works on
+  Gemini and DeepSeek and 400s on current Claude models; `max_tokens` works on
+  Anthropic and DeepSeek but not Gemini. Changing a character's `provider`
   means re-checking its `generation` block.
 - **The Anthropic provider leaves thinking on** and defaults `max_tokens` to
   4096 because thinking and the visible answer share that ceiling — a
   quote-sized budget truncates the reply. Disabling thinking is worse here:
   it can leak `<thinking>` tags into text we post verbatim.
+- **DeepSeek rides the `openai` SDK, not its own.** There is no DeepSeek
+  package: the provider is `openai.OpenAI(base_url="https://api.deepseek.com")`
+  against the Chat Completions API, which is why `openai` is a dependency
+  despite nothing here using OpenAI models. Unlike Anthropic it needs no
+  `max_tokens` floor — `deepseek-reasoner` returns its reasoning in a separate
+  `reasoning_content` field, so `.content` is already the postable answer.
+
 - **Character prompt bodies were ported byte-identical** from the two
   original bots into `characters/*.md`. Treat any edit to a character body as
   a voice change the user should sign off on, not a cleanup.

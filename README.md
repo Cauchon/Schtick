@@ -33,7 +33,7 @@ Two characters run on Schtick today. They're the proof it works.
 
 You'll need three things, all free to start:
 
-- An **AI API key** — either a Gemini key from [aistudio.google.com](https://aistudio.google.com) (free tier works) or an Anthropic key from [console.anthropic.com](https://console.anthropic.com) for Claude.
+- An **AI API key** — either a Gemini key from [aistudio.google.com](https://aistudio.google.com) (free tier works) an Anthropic key from [console.anthropic.com](https://console.anthropic.com) for Claude, or a DeepSeek key from [platform.deepseek.com](https://platform.deepseek.com).
 - A **Bluesky account** plus an **app password** — make one at bsky.app → Settings → App Passwords.
 - A **machine that stays on** to run the bot (your laptop while you test; a Docker host or Raspberry Pi to keep it live — see [Keep it running](#keep-it-running)).
 
@@ -54,7 +54,7 @@ from the ranges in `pyproject.toml`. Keep it editable: the engine locates your
 `characters/` directory next to the package.
 
 The `new` wizard asks for the character's name, which AI should write its quotes
-(Gemini or Claude), then your Bluesky handle, app password, and that AI's API key
+(Gemini, Claude or DeepSeek), then your Bluesky handle, app password, and that AI's API key
 (credentials are hidden as you type; leave any blank to drop in a placeholder you
 can fill in later). It writes two files: your character at `characters/<slug>.md`
 and its credentials at `.env.<slug>`.
@@ -117,7 +117,7 @@ Frontmatter fields:
 | `name`                  | yes      | —       | Display name, e.g. `Aunt Carol`. |
 | `char_target`           | no       | `240`   | Soft length target; `preview` flags quotes that run over. |
 | `post_interval_minutes` | no       | `214`   | How often it posts (214 min ≈ every 3h 34m). |
-| `provider`              | no       | `gemini`| Which AI writes the quotes: `gemini` or `anthropic`. |
+| `provider`              | no       | `gemini`| Which AI writes the quotes: `gemini`, `anthropic` or `deepseek`. |
 | `model`                 | no       | —       | Override the provider's default model, e.g. `claude-opus-5`. |
 | `generation`            | no       | —       | Extra kwargs for the provider's API call. Omit for defaults. |
 | `fallbacks`             | no       | —       | Hand-written lines used if generation fails. |
@@ -134,6 +134,7 @@ character and a Claude character side by side.
 |-------------|---------------------|---------------------|-----------|
 | `gemini`    | `gemini-flash-latest` | `GEMINI_API_KEY`    | [aistudio.google.com](https://aistudio.google.com) |
 | `anthropic` | `claude-sonnet-5`   | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+| `deepseek`  | `deepseek-chat`     | `DEEPSEEK_API_KEY`  | [platform.deepseek.com](https://platform.deepseek.com) |
 
 To run a character on Claude, add two lines to its frontmatter and put the key in
 its `.env.<slug>`:
@@ -145,9 +146,11 @@ model: claude-opus-5    # optional — omit for claude-sonnet-5
 
 `generation` is passed straight through to that provider's API call, so its keys
 are provider-specific: `temperature: 1.1` for Gemini, but `max_tokens: 2048` or
-`output_config: {effort: low}` for Anthropic. Current Claude models **reject**
-`temperature`, `top_p`, and `top_k` — steer the voice in the prompt instead. If
-you switch a character's provider, check its `generation` block still applies.
+`output_config: {effort: low}` for Anthropic, and the OpenAI-shaped names
+(`temperature`, `max_tokens`, `top_p`) for DeepSeek. Current Claude models
+**reject** `temperature`, `top_p`, and `top_k` — steer the voice in the prompt
+instead. If you switch a character's provider, check its `generation` block
+still applies.
 
 ## Running your cast
 

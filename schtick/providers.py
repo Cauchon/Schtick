@@ -135,9 +135,77 @@ class AnthropicProvider:
         return text
 
 
+class DeepSeekProvider:
+    """DeepSeek via its OpenAI-compatible Chat Completions API.
+
+    DeepSeek does not ship its own SDK: it serves the OpenAI wire protocol at
+    ``https://api.deepseek.com``, so the official ``openai`` package talks to it
+    with nothing but a different ``base_url``.
+
+    ``deepseek-reasoner`` puts its chain of thought in a separate
+    ``reasoning_content`` field rather than inline in the message, so reading
+    ``.content`` already gives the visible answer — no tag stripping needed, and
+    no thinking budget to reserve the way Anthropic needs one.
+    """
+
+    name = "deepseek"
+    api_key_env = "DEEPSEEK_API_KEY"
+    # The chat model, not deepseek-reasoner: a one-liner in a fixed voice does
+    # not need a reasoning pass. Characters that want it set `model:` explicitly.
+    default_model = "deepseek-chat"
+    signup_url = "platform.deepseek.com"
+
+    BASE_URL = "https://api.deepseek.com"
+
+    def __init__(self):
+        self._client = None
+
+    def configure(self, api_key: str) -> None:
+        import openai
+
+        self._client = openai.OpenAI(api_key=api_key, base_url=self.BASE_URL)
+
+    def generate(self, prompt: str, model: str, generation_config: dict) -> str:
+        if self._client is None:
+            raise RuntimeError(
+                "DeepSeek provider used before configure() — call "
+                "schtick.generation.configure(persona) first."
+            )
+
+        # generation_config is passed straight through to chat.completions.create,
+        # so a character can set temperature, max_tokens, top_p, stop, etc. —
+        # the OpenAI-shaped names, which DeepSeek accepts. Falsy means send
+        # nothing extra and take the API's own defaults.
+        kwargs = dict(generation_config) if generation_config else {}
+
+        response = self._client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            **kwargs,
+        )
+
+        choice = response.choices[0]
+
+        # A moderation stop comes back as a normal 200 with an empty message, so
+        # check the reason before reading the text. The caller turns any
+        # exception into a fallback quote.
+        if choice.finish_reason == "content_filter":
+            raise RuntimeError(
+                f"DeepSeek declined the prompt (finish_reason=content_filter): {model}"
+            )
+
+        text = choice.message.content
+        if not text or not text.strip():
+            raise RuntimeError(
+                f"DeepSeek returned no text for model {model!r} "
+                f"(finish_reason={choice.finish_reason!r})."
+            )
+        return text
+
+
 PROVIDERS = {
     provider.name: provider
-    for provider in (GeminiProvider(), AnthropicProvider())
+    for provider in (GeminiProvider(), AnthropicProvider(), DeepSeekProvider())
 }
 
 DEFAULT_PROVIDER = GeminiProvider.name
