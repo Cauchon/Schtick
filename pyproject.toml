@@ -7,6 +7,7 @@ name = "schtick"
 version = "0.1.0"
 description = "Turn a written character into a bot that posts in-character quotes on a schedule."
 requires-python = ">=3.11"
+license = { text = "MIT" }
 # Deliberately NO `readme = "README.md"`: .dockerignore excludes root-level
 # *.md from the build context, so an in-image build could not find it.
 classifiers = [
