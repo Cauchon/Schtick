@@ -9,6 +9,7 @@ Usage:
     python -m schtick list                   List your characters
     python -m schtick preview <slug> [-n N]  Hear a character before going live
     python -m schtick run <slug>             Start the bot (posts on a schedule)
+    python -m schtick status [slug]          Is it alive? When did it last post?
     python -m schtick <slug>                 Same as 'run <slug>' (used by Docker)
 
 The slug is a character's filename stem, e.g. 'larry_david'. The slug may also
@@ -24,8 +25,11 @@ Docker image starts a bot: `python -m schtick <slug>`).
 import os
 import re
 import sys
+import json
 import getpass
 import logging
+from datetime import datetime, timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -34,7 +38,7 @@ from schtick.persona import load_persona, available_personas, characters_dir
 
 logger = logging.getLogger(__name__)
 
-SUBCOMMANDS = {"new", "list", "preview", "run"}
+SUBCOMMANDS = {"new", "list", "preview", "run", "status"}
 
 USAGE = """\
 Schtick — turn a written character into a bot that posts on a schedule.
@@ -47,6 +51,11 @@ Usage:
                                             each is one live API call against the
                                             character's provider. N defaults to 1.)
   python -m schtick run <slug>              Start the bot (posts on a schedule)
+  python -m schtick status [slug]           Is it alive? When did it last post?
+                                            (reads the state files a running bot
+                                            writes; --data-dir DIR says where to
+                                            look, --log-lines N how much log to
+                                            show. Never posts or calls an API.)
   python -m schtick <slug>                  Same as 'run <slug>' (used by Docker)
 
 The slug is a character's filename, e.g. 'larry_david'. You can also set the
@@ -159,6 +168,237 @@ def cmd_list(args):
             print(f"  {slug}  —  {persona.DISPLAY_NAME}  (posts every {interval})")
         except ValueError as e:
             print(f"  {slug}  —  (could not load: {e})")
+
+
+# --------------------------------------------------------------------------- #
+# status [slug] [--data-dir DIR] [--log-lines N]
+# --------------------------------------------------------------------------- #
+#
+# Read-only: it opens the files a running bot writes and never imports
+# schtick.bot (constructing a PersonaBot logs in to Bluesky). The three
+# filename patterns below are duplicated from bot.py on purpose — see
+# PersonaBot.__init__ (posts_cache_file, last_post_file) and configure_logging
+# for the definitions these must stay in step with.
+
+DEFAULT_LOG_LINES = 5
+
+
+def _state_filenames(slug: str) -> "tuple[str, str, str]":
+    """The three state files a bot writes, relative to its working directory.
+
+    Mirrors schtick/bot.py — change them there and here together.
+    """
+    return (
+        f"last_post_{slug}.json",     # bot.py: PersonaBot.last_post_file
+        f"recent_posts_{slug}.json",  # bot.py: PersonaBot.posts_cache_file
+        f"{slug}.log",                # bot.py: configure_logging
+    )
+
+
+def _status_data_dir(explicit: "str | None") -> Path:
+    """Where to look for state: the flag, else SCHTICK_DATA_DIR, else cwd."""
+    return Path(explicit or os.getenv("SCHTICK_DATA_DIR") or ".")
+
+
+def _find_state_dir(base: Path, slug: str) -> "Path | None":
+    """Return the directory holding ``slug``'s state, or None if there is none.
+
+    ``base/<slug>/`` is checked first: that is the host-side shape of the
+    compose bind mounts (``./data/<slug>`` → the container's working
+    directory). ``base`` itself is the fallback, which is where a bot started
+    by hand from that directory writes.
+    """
+    for candidate in (base / slug, base):
+        if any((candidate / name).exists() for name in _state_filenames(slug)):
+            return candidate
+    return None
+
+
+def _humanize_delta(delta: timedelta) -> str:
+    """Render a duration as e.g. '3d 4h', '2h 13m', '45m'."""
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 1:
+        return "less than a minute"
+    days, rest = divmod(minutes, 24 * 60)
+    if days:
+        hours = rest // 60
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    return _humanize_minutes(rest)
+
+
+def _read_last_post_time(path: Path) -> "datetime | None":
+    """Read ``{"last_post": "<iso>"}``, or None if missing/corrupt.
+
+    The timestamp is naive local time (bot.py's ``save_last_post_time``), so
+    the caller must compare it against a naive ``datetime.now()``.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return datetime.fromisoformat(json.load(f)["last_post"])
+    except Exception:
+        return None
+
+
+def _read_recent_posts(path: Path) -> "list | None":
+    """Read the dedup cache (a JSON list), or None if missing/corrupt."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+        return cache if isinstance(cache, list) else None
+    except Exception:
+        return None
+
+
+def _tail_lines(path: Path, count: int, block_size: int = 8192) -> "list[str]":
+    """Return the last ``count`` lines of ``path`` without reading it all.
+
+    The log rotates at 1 MB, so it is seeked from the end a block at a time.
+    Returns [] for a missing, empty or unreadable file.
+    """
+    if count < 1:
+        return []
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            position = f.tell()
+            data = b""
+            # One more newline than lines wanted, so the first line is whole.
+            while position > 0 and data.count(b"\n") <= count:
+                step = min(block_size, position)
+                position -= step
+                f.seek(position)
+                data = f.read(step) + data
+    except Exception:
+        return []
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    return lines[-count:]
+
+
+def _print_status(persona, base: Path, log_lines: int, now: datetime):
+    """Print one character's status block. Never raises on a bad state file."""
+    slug = persona.SLUG
+    last_post_name, cache_name, log_name = _state_filenames(slug)
+
+    print(f"{persona.DISPLAY_NAME}  ({slug})")
+
+    try:
+        provider = providers.get_provider(persona.PROVIDER)
+        model = persona.MODEL or provider.default_model
+        print(f"  provider:  {persona.PROVIDER} ({model})")
+    except ValueError:
+        print(f"  provider:  {persona.PROVIDER} (unknown provider)")
+    interval_minutes = int(persona.POST_INTERVAL_MINUTES)
+    print(f"  interval:  every {_humanize_minutes(interval_minutes)}")
+
+    state_dir = _find_state_dir(base, slug)
+    if state_dir is None:
+        print(f"  state:     no state found (looked in {base / slug} and {base})")
+        return
+
+    print(f"  state:     {state_dir}")
+
+    # --- last post / next post: the liveness signal ------------------------ #
+    last_post = _read_last_post_time(state_dir / last_post_name)
+    if last_post is None:
+        if (state_dir / last_post_name).exists():
+            print(f"  last post: unreadable ({last_post_name})")
+        else:
+            print("  last post: never (no post recorded yet)")
+        print("  next post: unknown")
+    else:
+        stamp = last_post.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"  last post: {_humanize_delta(now - last_post)} ago  ({stamp})")
+        due = last_post + timedelta(minutes=interval_minutes)
+        due_stamp = due.strftime("%Y-%m-%d %H:%M:%S")
+        if due <= now:
+            print(f"  next post: OVERDUE by {_humanize_delta(now - due)}  "
+                  f"(was due {due_stamp})")
+        else:
+            print(f"  next post: in {_humanize_delta(due - now)}  ({due_stamp})")
+
+    # --- the dedup cache: newest post text + how many are remembered ------- #
+    cache = _read_recent_posts(state_dir / cache_name)
+    if cache is None:
+        if (state_dir / cache_name).exists():
+            print(f"  latest:    unreadable ({cache_name})")
+        else:
+            print(f"  latest:    no posts cached ({cache_name} not written yet)")
+    elif not cache:
+        print("  latest:    0 posts cached")
+    else:
+        print(f"  latest:    {cache[-1]}")
+        print(f"             ({len(cache)} posts cached)")
+
+    # --- the tail of the log ----------------------------------------------- #
+    tail = _tail_lines(state_dir / log_name, log_lines)
+    if not tail:
+        print(f"  log:       nothing to show ({log_name})")
+    else:
+        print(f"  log ({log_name}, last {len(tail)}):")
+        for line in tail:
+            print(f"    {line}")
+
+
+def cmd_status(args):
+    slug = None
+    data_dir = None
+    log_lines = DEFAULT_LOG_LINES
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--data-dir", "-d"):
+            i += 1
+            if i >= len(args):
+                print("Error: --data-dir needs a directory, e.g. --data-dir data")
+                sys.exit(1)
+            data_dir = args[i]
+        elif arg in ("--log-lines", "-l"):
+            i += 1
+            if i >= len(args):
+                print("Error: --log-lines needs a number, e.g. --log-lines 20")
+                sys.exit(1)
+            try:
+                log_lines = int(args[i])
+            except ValueError:
+                print(f"Error: --log-lines expects a number, got '{args[i]}'.")
+                sys.exit(1)
+            if log_lines < 0:
+                print("Error: --log-lines cannot be negative.")
+                sys.exit(1)
+        elif slug is None:
+            slug = arg
+        else:
+            print(f"Error: unexpected argument '{arg}'.")
+            print("Usage: python -m schtick status [slug] [--data-dir DIR] [--log-lines N]")
+            sys.exit(1)
+        i += 1
+
+    if slug:
+        try:
+            personas = [load_persona(slug)]
+        except ValueError as e:
+            print(e)
+            sys.exit(1)
+    else:
+        personas = []
+        for available in available_personas():
+            try:
+                personas.append(load_persona(available))
+            except ValueError as e:
+                print(f"{available}  —  (could not load: {e})\n")
+
+    if not personas:
+        print("No characters yet. Create one with:  python -m schtick new")
+        return
+
+    base = _status_data_dir(data_dir)
+    # Naive local time, because last_post is naive local (see bot.py's
+    # save_last_post_time docstring).
+    now = datetime.now()
+    for index, persona in enumerate(personas):
+        _print_status(persona, base, log_lines, now)
+        if index < len(personas) - 1:
+            print()
 
 
 # --------------------------------------------------------------------------- #
@@ -430,6 +670,8 @@ def main():
             cmd_preview(rest)
         elif command == "run":
             cmd_run(rest)
+        elif command == "status":
+            cmd_status(rest)
         return
 
     # Backward compatibility: a bare slug (or the PERSONA env var) runs the bot.
