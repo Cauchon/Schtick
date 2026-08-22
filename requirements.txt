@@ -1,5 +1,5 @@
 atproto
-google-generativeai
+google-genai
 anthropic
 python-dotenv==1.0.0
 PyYAML
