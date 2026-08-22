@@ -8,6 +8,7 @@ DeepSeek has its own file (tests/test_deepseek_provider.py); it is not
 re-tested here.
 """
 
+import logging
 import sys
 import types
 
@@ -167,6 +168,46 @@ def test_gemini_returns_the_response_text(gemini, fake_genai):
     assert gemini.generate("p", "gemini-flash-latest", {}) == (
         "I'll tell you what the problem is."
     )
+
+
+@pytest.fixture
+def genai_logger():
+    """Restore the SDK logger's level, which configure() raises as a side effect."""
+    logger = logging.getLogger(providers.GENAI_LOGGER_NAME)
+    original = logger.level
+    yield logger
+    logger.setLevel(original)
+
+
+def test_gemini_configure_silences_the_afc_warning(gemini, fake_genai, genai_logger):
+    # The SDK warns on every generate_content call that AFC belongs in
+    # Chat.send_message. We pass no tools, so it is noise in the bot's log.
+    genai_logger.setLevel(logging.NOTSET)
+    assert genai_logger.isEnabledFor(logging.WARNING)  # noisy by default
+
+    gemini.configure("k")
+
+    assert not genai_logger.isEnabledFor(logging.WARNING)
+
+
+def test_gemini_configure_still_lets_sdk_errors_through(gemini, fake_genai, genai_logger):
+    gemini.configure("k")
+
+    assert genai_logger.isEnabledFor(logging.ERROR)
+    assert genai_logger.isEnabledFor(logging.CRITICAL)
+
+
+def test_gemini_quieting_is_scoped_to_the_sdk_logger(gemini, fake_genai, genai_logger):
+    # Only the one SDK logger gets a level of its own: the root logger the bot
+    # configures, and the bot's own loggers, keep whatever they had.
+    root_level = logging.getLogger().level
+    bot_level = logging.getLogger("schtick.bot").level
+
+    gemini.configure("k")
+
+    assert providers.GENAI_LOGGER_NAME == "google_genai.models"
+    assert logging.getLogger().level == root_level
+    assert logging.getLogger("schtick.bot").level == bot_level
 
 
 @pytest.mark.parametrize("text", [None, "", "   "])

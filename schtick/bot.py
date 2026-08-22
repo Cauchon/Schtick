@@ -338,8 +338,15 @@ class PersonaBot:
                 logger.warning("No postable quote and no unused fallback left; skipping this post.")
                 return False
 
-            # Post to Bluesky
-            self.post_to_bluesky(quote)
+            # Bluesky is the baseline platform: if the quote did not land there
+            # it is not "posted", so the slot fails rather than half-succeeding.
+            # Cross-posting to Twitter here would put the line out under the
+            # character's name on the secondary platform only, and — because
+            # post_to_bluesky records nothing on failure — the same quote could
+            # be tweeted again on a later slot.
+            if not self.post_to_bluesky(quote):
+                logger.error("Bluesky post failed; skipping the tweet and this post.")
+                return False
 
             # Also post to Twitter
             self.post_to_twitter(quote)

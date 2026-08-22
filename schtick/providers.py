@@ -12,6 +12,17 @@ Each provider is a module-level singleton: ``configure()`` stashes the client,
 ``generate()`` uses it. A process runs one persona, so that's one client.
 """
 
+import logging
+
+# The google-genai SDK logs a WARNING on the first Models.generate_content call
+# ("Direct use of automatic function calling (AFC) ... is not recommended"), and
+# an INFO line about AFC remote calls on every call. We pass no tools, so AFC is
+# irrelevant here — the messages are pure noise in a bot log that a human reads
+# to see what got posted. Raising this logger to ERROR drops both while leaving
+# real SDK errors visible.
+GENAI_LOGGER_NAME = "google_genai.models"
+GENAI_LOG_LEVEL = logging.ERROR
+
 
 class GeminiProvider:
     """Google Gemini via the ``google-genai`` SDK.
@@ -32,6 +43,9 @@ class GeminiProvider:
     def configure(self, api_key: str) -> None:
         from google import genai
 
+        # Scoped to this provider (and to the one SDK logger), so a checkout on
+        # another provider is untouched — see GENAI_LOGGER_NAME above.
+        logging.getLogger(GENAI_LOGGER_NAME).setLevel(GENAI_LOG_LEVEL)
         self._client = genai.Client(api_key=api_key)
 
     def generate(self, prompt: str, model: str, generation_config: dict) -> str:
