@@ -36,11 +36,11 @@ behavior, it belongs in its character file as data the engine already reads.
 Adding a persona = one new `characters/<slug>.md` file + a compose service.
 No engine changes.
 
-CLI subcommands beyond the bare `<slug>` form (being finished by another
-agent — describing intent, not guaranteed final shape): `new` scaffolds a
+CLI subcommands beyond the bare `<slug>` form: `new` scaffolds a
 `characters/<slug>.md` template and prints a ready-to-paste compose service
 block; `preview` generates one sample post for a persona without publishing
-it (real Gemini call); `list` prints the available persona slugs; `run` is
+it (a real call to the character's provider); `list` prints the available
+persona slugs; `run` is
 the explicit form of running the posting scheduler for a slug. `status` is a
 read-only report — last post, next post (flagged OVERDUE when the due time has
 passed, the only liveness signal there is without a heartbeat), the dedup
