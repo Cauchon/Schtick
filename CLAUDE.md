@@ -67,10 +67,18 @@ the explicit form of running the posting scheduler for a slug.
   original bots into `characters/*.md`. Treat any edit to a character body as
   a voice change the user should sign off on, not a cleanup.
 - **State/logs are unchanged by the rename**, still written relative to the
-  working directory: `recent_posts_<slug>.json` and `<slug>.log`. In Docker
-  that's `/home/appuser/data`, bind-mounted to `./data/<slug>` on the host.
-  The legacy-migration logic is still present: `load_recent_posts` adopts a
-  legacy `recent_posts.json` into the per-slug file on first run.
+  working directory: `recent_posts_<slug>.json`, `last_post_<slug>.json`
+  (time of the last successful post; drives the startup guard that skips the
+  boot post when one landed within the interval) and `<slug>.log` (rotating,
+  1 MB × 3). In Docker that's `/home/appuser/data`, bind-mounted to
+  `./data/<slug>` on the host. The legacy-migration logic is still present:
+  `load_recent_posts` adopts a legacy `recent_posts.json` into the per-slug
+  file on first run.
+- **Fallbacks are filtered like generated quotes.** `choose_quote` rejects
+  anything in the dedup cache or over 300 chars, fallbacks included, and
+  returns `None` when nothing is postable — `post_quote` then skips the slot.
+  A generation error ends the candidate stream immediately (one failed call,
+  not ten) and goes straight to the unused fallbacks.
 
 ## Deployment
 
