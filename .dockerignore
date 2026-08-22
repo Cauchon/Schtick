@@ -4,6 +4,7 @@ __pycache__/
 .env
 .env.*
 recent_posts*.json
+last_post_*.json
 .DS_Store
 .claude
 deploy/

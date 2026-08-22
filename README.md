@@ -198,8 +198,8 @@ your own machine.
 - The engine (`schtick/`) reads your character file — the frontmatter and the voice.
 - For each post, the character's AI — Gemini or Claude — writes a fresh line in that voice.
 - A dedup cache remembers the last 100 posts and retries so the character doesn't repeat itself.
-- If generation fails, it posts one of your `fallbacks` instead of going silent.
-- It posts immediately on startup, then every `post_interval_minutes` — forever.
+- If generation fails, it posts a `fallback` it hasn't used yet — and once they're all used, it skips that slot rather than repeat itself.
+- It posts on startup unless it already posted within the last `post_interval_minutes` (so a restart doesn't cost you an extra post), then every `post_interval_minutes` — forever.
 - The engine is generic: `schtick/` contains zero character-specific code. Everything about a character lives in its markdown file.
 
 ## Contributing
