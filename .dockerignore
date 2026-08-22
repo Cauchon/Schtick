@@ -12,3 +12,6 @@ deploy/
 data/
 venv/
 .venv/
+*.egg-info/
+build/
+dist/

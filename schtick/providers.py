@@ -14,37 +14,64 @@ Each provider is a module-level singleton: ``configure()`` stashes the client,
 
 
 class GeminiProvider:
-    """Google Gemini via ``google-generativeai``."""
+    """Google Gemini via the ``google-genai`` SDK.
+
+    (Not ``google-generativeai``, which Google deprecated. The client is
+    per-instance now — ``genai.Client(api_key=...)`` — where the old SDK
+    configured a module-level key.)
+    """
 
     name = "gemini"
     api_key_env = "GEMINI_API_KEY"
     default_model = "gemini-flash-latest"
     signup_url = "aistudio.google.com"
 
-    def configure(self, api_key: str) -> None:
-        import google.generativeai as genai
+    def __init__(self):
+        self._client = None
 
-        genai.configure(api_key=api_key)
+    def configure(self, api_key: str) -> None:
+        from google import genai
+
+        self._client = genai.Client(api_key=api_key)
 
     def generate(self, prompt: str, model: str, generation_config: dict) -> str:
         """Generate one completion.
 
         Preserves the legacy per-persona branch: if ``generation_config`` is
-        truthy it is passed through as a GenerationConfig; if falsy,
-        ``generate_content`` is called with NO ``generation_config`` kwarg at
-        all (Kramer's original behavior — see CLAUDE.md).
+        truthy it is passed through as a GenerateContentConfig; if falsy,
+        ``generate_content`` is called with NO ``config`` kwarg at all
+        (Kramer's original behavior — see CLAUDE.md).
         """
-        import google.generativeai as genai
+        from google.genai import types
 
-        client = genai.GenerativeModel(model)
+        if self._client is None:
+            raise RuntimeError(
+                "Gemini provider used before configure() — call "
+                "schtick.generation.configure(persona) first."
+            )
+
         if generation_config:
-            response = client.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(**generation_config),
+            response = self._client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(**generation_config),
             )
         else:
-            response = client.generate_content(prompt)
-        return response.text
+            response = self._client.models.generate_content(
+                model=model,
+                contents=prompt,
+            )
+
+        # The old SDK raised when a response carried no text; this one returns
+        # None. Raise instead, so the caller's fallback-quote path still fires
+        # rather than blowing up on None.strip().
+        text = response.text
+        if not text or not text.strip():
+            raise RuntimeError(
+                f"Gemini returned no text for model {model!r} (blocked or empty "
+                "response)."
+            )
+        return text
 
 
 class AnthropicProvider:

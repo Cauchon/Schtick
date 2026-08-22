@@ -79,6 +79,17 @@ the explicit form of running the posting scheduler for a slug.
   returns `None` when nothing is postable — `post_quote` then skips the slot.
   A generation error ends the candidate stream immediately (one failed call,
   not ten) and goes straight to the unused fallbacks.
+- **`pyproject.toml` declares ranges; `requirements.txt` is the lock** the
+  Docker image installs (every line pinned, resolved on 3.12). Add a
+  dependency in both. `requests` is deliberately not a direct dependency —
+  nothing imports it; it comes in via tweepy. Don't put `readme =
+  "README.md"` in pyproject: `.dockerignore` drops root-level `*.md`, so an
+  in-image build would fail to find it.
+- **The image installs the project EDITABLE (`pip install --no-deps -e .`)
+  and that is load-bearing.** `persona.py` finds `characters/` at
+  `Path(__file__).parent.parent`, so a regular site-packages install makes
+  every slug "unknown". Editable (or `SCHTICK_CHARACTERS_DIR`) is the fix;
+  `PYTHONPATH=/app` is gone.
 
 ## Deployment
 
