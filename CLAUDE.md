@@ -41,7 +41,13 @@ agent — describing intent, not guaranteed final shape): `new` scaffolds a
 `characters/<slug>.md` template and prints a ready-to-paste compose service
 block; `preview` generates one sample post for a persona without publishing
 it (real Gemini call); `list` prints the available persona slugs; `run` is
-the explicit form of running the posting scheduler for a slug.
+the explicit form of running the posting scheduler for a slug. `status` is a
+read-only report — last post, next post (flagged OVERDUE when the due time has
+passed, the only liveness signal there is without a heartbeat), the dedup
+cache and a log tail — read straight from the state files under `--data-dir`
+/ `SCHTICK_DATA_DIR` (`DIR/<slug>/`, the compose bind-mount layout, else
+`DIR/` itself); it must never import `schtick.bot`, whose constructor logs in
+to Bluesky, so it duplicates bot.py's three state filenames instead.
 
 ## Gotchas
 

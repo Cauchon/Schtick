@@ -168,7 +168,18 @@ different Bluesky accounts.
 ```bash
 python -m schtick list              # every character you've written
 python -m schtick run aunt_carol    # go live with one
+python -m schtick status            # is everyone alive? when did they last post?
 ```
+
+`status` answers "is it still going?" without a dashboard. For each character it
+reports the last post (how long ago, and the text), when the next one is due —
+flagged **OVERDUE** if that moment has passed, which is the sign a bot has
+stopped — plus the tail of its log. It only reads the files a running bot
+writes, so it never posts or spends API quota. Pass a slug to narrow it to one
+character, `--log-lines N` for a longer tail, and `--data-dir DIR` (or
+`SCHTICK_DATA_DIR`) to say where the state lives — on a Docker host that's the
+checkout's `data/` tree, so run `SCHTICK_DATA_DIR=./data python -m schtick status`
+(or `--data-dir data`) from the checkout.
 
 **X/Twitter is optional.** Add the `TWITTER_*` keys from [`env.example`](env.example)
 to a character's `.env.<slug>` and it'll cross-post there too. Leave them out and

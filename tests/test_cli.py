@@ -289,7 +289,7 @@ def test_main_usage_nudges_towards_new_when_there_are_no_characters(
 def test_main_dispatches_the_known_subcommands(characters, monkeypatch):
     # Guards the bare-slug fallback: anything in SUBCOMMANDS must reach its
     # handler, never run_bot (which would log in to Bluesky).
-    assert cli.SUBCOMMANDS == {"new", "list", "preview", "run"}
+    assert cli.SUBCOMMANDS == {"new", "list", "preview", "run", "status"}
 
     dispatched = []
     for command in sorted(cli.SUBCOMMANDS):
@@ -299,7 +299,7 @@ def test_main_dispatches_the_known_subcommands(characters, monkeypatch):
     for command in sorted(cli.SUBCOMMANDS):
         run_cli(monkeypatch, command)
 
-    assert dispatched == ["list", "new", "preview", "run"]
+    assert dispatched == ["list", "new", "preview", "run", "status"]
 
 
 def test_main_treats_an_unknown_first_argument_as_a_slug(characters, monkeypatch):
