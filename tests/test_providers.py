@@ -119,7 +119,7 @@ def gemini(fake_genai):
 def test_gemini_declares_its_key_env_and_default_model():
     gemini_singleton = providers.get_provider("gemini")
     assert gemini_singleton.api_key_env == "GEMINI_API_KEY"
-    assert gemini_singleton.default_model == "gemini-3.7-flash"
+    assert gemini_singleton.default_model == "gemini-3.6-flash"
     assert providers.DEFAULT_PROVIDER == "gemini"
 
 
@@ -131,7 +131,7 @@ def test_gemini_configure_builds_a_per_instance_client_with_the_key(gemini, fake
 
 def test_gemini_generate_before_configure_raises(fake_genai):
     with pytest.raises(RuntimeError, match="before configure"):
-        GeminiProvider().generate("prompt", "gemini-3.7-flash", {})
+        GeminiProvider().generate("prompt", "gemini-3.6-flash", {})
 
 
 @pytest.mark.parametrize("empty_config", [{}, None])
@@ -141,10 +141,10 @@ def test_gemini_passes_no_config_kwarg_at_all_when_the_config_is_falsy(
     # Kramer's frontmatter deliberately omits `generation`; absent must mean NO
     # config kwarg, not an empty GenerateContentConfig — see CLAUDE.md.
     gemini.configure("k")
-    gemini.generate("say something", "gemini-3.7-flash", empty_config)
+    gemini.generate("say something", "gemini-3.6-flash", empty_config)
 
     assert fake_genai.last.create_kwargs == {
-        "model": "gemini-3.7-flash",
+        "model": "gemini-3.6-flash",
         "contents": "say something",
     }
     assert "config" not in fake_genai.last.create_kwargs
@@ -152,10 +152,10 @@ def test_gemini_passes_no_config_kwarg_at_all_when_the_config_is_falsy(
 
 def test_gemini_wraps_a_populated_config_in_a_generate_content_config(gemini, fake_genai):
     gemini.configure("k")
-    gemini.generate("say something", "gemini-3.7-flash", {"temperature": 1.1})
+    gemini.generate("say something", "gemini-3.6-flash", {"temperature": 1.1})
 
     kwargs = fake_genai.last.create_kwargs
-    assert kwargs["model"] == "gemini-3.7-flash"
+    assert kwargs["model"] == "gemini-3.6-flash"
     assert kwargs["contents"] == "say something"
     assert isinstance(kwargs["config"], FakeGenerateContentConfig)
     assert kwargs["config"].kwargs == {"temperature": 1.1}
@@ -165,7 +165,7 @@ def test_gemini_returns_the_response_text(gemini, fake_genai):
     fake_genai.next_text = "I'll tell you what the problem is."
     gemini.configure("k")
 
-    assert gemini.generate("p", "gemini-3.7-flash", {}) == (
+    assert gemini.generate("p", "gemini-3.6-flash", {}) == (
         "I'll tell you what the problem is."
     )
 
@@ -218,7 +218,7 @@ def test_gemini_empty_or_none_text_raises(gemini, fake_genai, text):
     gemini.configure("k")
 
     with pytest.raises(RuntimeError, match="no text"):
-        gemini.generate("p", "gemini-3.7-flash", {})
+        gemini.generate("p", "gemini-3.6-flash", {})
 
 
 # --------------------------------------------------------------------------- #

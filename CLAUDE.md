@@ -66,7 +66,10 @@ to Bluesky, so it duplicates bot.py's three state filenames instead.
   is a hot-swapped pointer that can land on a preview/experimental release;
   in August 2026 it returned 503 on every call for 24+ hours while
   `gemini-3.6-flash`/`gemini-3.7-flash` worked. The provider default is a
-  pinned stable model; bump it deliberately. Diagnose a silent bot with
+  pinned stable model; bump it deliberately — and not to the newest one
+  reflexively: on 2026-08-22 a 5-call A/B got 5/5 on `gemini-3.6-flash` and
+  3/5 on the month-old `gemini-3.7-flash`, so the default is 3.6 until 3.7's
+  capacity settles. Diagnose a silent bot with
   `python -m schtick status` (OVERDUE) and the log's
   `No postable quote and no unused fallback left` line — with every fallback
   already in the dedup cache, a provider outage is silence, not repeats.

@@ -39,7 +39,7 @@ class GeminiProvider:
     # experimental — and in August 2026 it resolved to something that returned
     # 503 for over a day while the stable models answered fine. Bump this on
     # purpose; characters can still pin their own with `model:`.
-    default_model = "gemini-3.7-flash"
+    default_model = "gemini-3.6-flash"
     signup_url = "aistudio.google.com"
 
     def __init__(self):
