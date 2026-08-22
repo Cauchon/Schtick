@@ -217,6 +217,17 @@ your own machine.
 Open source, PRs welcome. Write a new character, sharpen an example, or improve
 the engine — issues and pull requests are all fair game.
 
+### Development
+
+```bash
+pip install -r requirements.txt   # the pinned runtime deps
+pip install -e ".[dev]"           # the engine (editable) plus pytest
+python -m pytest                  # the offline test suite
+```
+
+The suite is hermetic — no network, no API keys, no posting — so it's safe to
+run as often as you like. CI runs it on Python 3.11 and 3.12.
+
 ## License
 
 Open source. Use it, fork it, cast whoever you want.

@@ -31,8 +31,19 @@ dependencies = [
     "tweepy>=4.14,<5",
 ]
 
+# Test-only, and deliberately NOT in requirements.txt: that file is the lock the
+# Docker image installs, and the image has no business shipping a test runner.
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
 [project.scripts]
 schtick = "schtick.__main__:main"
+
+# testpaths keeps collection inside tests/. Notably it keeps the root-level
+# test_bot.py out: that is a legacy live-API script, not a pytest suite, and
+# collecting it would spend real generation quota.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools]
 # Only the engine package. `characters/` is data the engine finds on disk

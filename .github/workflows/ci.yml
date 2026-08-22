@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Editable, matching the Dockerfile: persona.py finds characters/ at
+      # Path(__file__).parent.parent, which a site-packages install would break.
+      - name: Install schtick
+        run: pip install --no-deps -e .
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Compile
+        run: python -m py_compile schtick/*.py
+
+      # testpaths in pyproject.toml keeps this inside tests/ — the root-level
+      # test_bot.py is a live-API script and must never be collected.
+      - name: Test
+        run: python -m pytest
