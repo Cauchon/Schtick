@@ -1,0 +1,14 @@
+# Dependabot bumps the exact pins in requirements.txt (the lock the Docker image
+# installs); pyproject.toml's ranges are hand-maintained — widen them yourself
+# when a bump crosses a major.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
