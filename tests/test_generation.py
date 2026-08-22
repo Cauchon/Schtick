@@ -5,13 +5,17 @@ No network and no API keys: the provider is a recording stub registered into
 ``generate_quote()`` never reach a real SDK.
 """
 
+import logging
+
 import pytest
 
 from schtick import generation, providers
 from schtick.generation import (
     RECENT_QUOTES_PLACEHOLDER,
+    RETRY_DELAYS_SECONDS,
     build_prompt,
     format_recent_quotes,
+    transient_status,
 )
 
 
@@ -278,3 +282,164 @@ def test_generate_quote_propagates_provider_errors(fake_provider):
     # The bot's fallback path depends on the exception reaching it.
     with pytest.raises(RuntimeError, match="provider is down"):
         generation.generate_quote(StubPersona(), [])
+
+
+# --- transient_status ------------------------------------------------------
+
+class SdkError(Exception):
+    """Stands in for an SDK exception object, which carries its own status.
+
+    google-genai's ``APIError`` puts it on ``.code``; anthropic's and openai's
+    ``APIStatusError`` put it on ``.status_code``. Attributes are only set when
+    asked for, so ``SdkError("boom")`` is a status-less exception.
+    """
+
+    def __init__(self, message="upstream is busy", code=None, status_code=None):
+        super().__init__(message)
+        if code is not None:
+            self.code = code
+        if status_code is not None:
+            self.status_code = status_code
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_transient_status_reads_the_code_attribute(status):
+    assert transient_status(SdkError(code=status)) == status
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_transient_status_reads_the_status_code_attribute(status):
+    assert transient_status(SdkError(status_code=status)) == status
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
+def test_transient_status_ignores_a_client_error(status):
+    assert transient_status(SdkError(code=status)) is None
+
+
+def test_transient_status_is_none_without_either_attribute():
+    assert transient_status(RuntimeError("Gemini returned no text")) is None
+
+
+@pytest.mark.parametrize("value", ["503", 503.0, None, True])
+def test_transient_status_ignores_a_non_int_status(value):
+    # A string status, a float, or the `True` that `bool` sneaks past an
+    # isinstance(int) check are all "no status", not "retry me".
+    assert transient_status(SdkError(code=value)) is None
+
+
+# --- generate_quote: retrying transient failures ---------------------------
+
+class Flaky:
+    """A provider.generate that raises ``exc_factory()`` ``failures`` times."""
+
+    def __init__(self, exc_factory, failures, reply="a fresh line"):
+        self.exc_factory = exc_factory
+        self.failures = failures
+        self.reply = reply
+        self.calls = 0
+        self.raised = []
+
+    def __call__(self, prompt, model, config):
+        self.calls += 1
+        if self.calls <= self.failures:
+            exc = self.exc_factory(self.calls)
+            self.raised.append(exc)
+            raise exc
+        return self.reply
+
+
+def test_a_503_is_retried_on_the_backoff_schedule_until_it_succeeds(
+    fake_provider, recorded_sleeps
+):
+    flaky = Flaky(lambda n: SdkError(code=503), failures=2)
+    fake_provider.generate = flaky
+
+    assert generation.generate_quote(StubPersona(), []) == "a fresh line"
+    assert flaky.calls == 3
+    assert recorded_sleeps == [RETRY_DELAYS_SECONDS[0], RETRY_DELAYS_SECONDS[1]]
+
+
+def test_a_429_on_status_code_is_retried_too(fake_provider, recorded_sleeps):
+    # The anthropic/openai spelling of the status.
+    flaky = Flaky(lambda n: SdkError(status_code=429), failures=1)
+    fake_provider.generate = flaky
+
+    assert generation.generate_quote(StubPersona(), []) == "a fresh line"
+    assert flaky.calls == 2
+    assert recorded_sleeps == [RETRY_DELAYS_SECONDS[0]]
+
+
+def test_a_successful_first_call_never_sleeps(fake_provider, recorded_sleeps):
+    assert generation.generate_quote(StubPersona(), []) == "a fresh line"
+    assert len(fake_provider.generate_calls) == 1
+    assert recorded_sleeps == []
+
+
+def test_a_400_is_not_retried(fake_provider, recorded_sleeps):
+    # A bad request fails identically on every attempt; retrying it only
+    # delays the fallback.
+    flaky = Flaky(lambda n: SdkError("bad request", code=400), failures=99)
+    fake_provider.generate = flaky
+
+    with pytest.raises(SdkError, match="bad request"):
+        generation.generate_quote(StubPersona(), [])
+
+    assert flaky.calls == 1
+    assert recorded_sleeps == []
+
+
+def test_a_runtime_error_without_a_status_is_not_retried(fake_provider, recorded_sleeps):
+    # Our own refusal/empty-text RuntimeErrors from providers.py land here.
+    flaky = Flaky(lambda n: RuntimeError("Claude declined the prompt"), failures=99)
+    fake_provider.generate = flaky
+
+    with pytest.raises(RuntimeError, match="declined"):
+        generation.generate_quote(StubPersona(), [])
+
+    assert flaky.calls == 1
+    assert recorded_sleeps == []
+
+
+def test_the_last_exception_propagates_once_the_schedule_is_exhausted(
+    fake_provider, recorded_sleeps
+):
+    flaky = Flaky(lambda n: SdkError(f"503 on call {n}", code=503), failures=99)
+    fake_provider.generate = flaky
+
+    with pytest.raises(SdkError) as exc:
+        generation.generate_quote(StubPersona(), [])
+
+    # One attempt per delay, plus the first — and it is the final failure that
+    # reaches the caller, not the one that started the sequence.
+    assert flaky.calls == len(RETRY_DELAYS_SECONDS) + 1
+    assert exc.value is flaky.raised[-1]
+    assert str(exc.value) == f"503 on call {flaky.calls}"
+    assert recorded_sleeps == list(RETRY_DELAYS_SECONDS)
+
+
+def test_a_retry_resends_the_same_prompt_and_model(fake_provider, recorded_sleeps):
+    persona = StubPersona("Say something.", model="fake-tuned-model")
+    seen = []
+
+    def flaky(prompt, model, config):
+        seen.append((prompt, model, config))
+        if len(seen) == 1:
+            raise SdkError(code=503)
+        return "a fresh line"
+
+    fake_provider.generate = flaky
+    generation.generate_quote(persona, ["one"])
+
+    assert seen[0] == seen[1] == (build_prompt(persona, ["one"]), "fake-tuned-model", {})
+
+
+def test_each_retry_logs_the_status_the_attempt_and_the_delay(fake_provider, caplog):
+    fake_provider.generate = Flaky(lambda n: SdkError(code=503), failures=1)
+
+    with caplog.at_level(logging.WARNING, logger=generation.__name__):
+        generation.generate_quote(StubPersona(), [])
+
+    assert "503" in caplog.text
+    assert f"attempt 1/{len(RETRY_DELAYS_SECONDS) + 1}" in caplog.text
+    assert f"retrying in {RETRY_DELAYS_SECONDS[0]}s" in caplog.text

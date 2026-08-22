@@ -8,12 +8,60 @@ service does the writing is the character's choice (frontmatter
 Callers must call ``configure(persona)`` once before ``generate_quote``.
 """
 
+import logging
 import os
+import time
+from typing import Optional
 
 from schtick import providers
 
+logger = logging.getLogger(__name__)
+
 # The token character files use to mark where the recent-quotes block goes.
 RECENT_QUOTES_PLACEHOLDER = "{recent_quotes_text}"
+
+# --- Transient-failure retry policy ----------------------------------------
+#
+# A provider outage is not all-or-nothing: in the August 2026 Gemini episode
+# roughly one call in three succeeded while the rest returned 503. Without
+# retries a single 503 ended the whole posting slot (see bot.py's
+# `_candidates`), so the bots went silent for a day. One backoff sequence turns
+# that into a posted quote.
+#
+# Delays between successive attempts, so up to len()+1 = 5 attempts spanning
+# ~3.25 minutes. Deliberately longer than an SDK's own retry: this is riding
+# out a minutes-long capacity wobble, not a network blip. The scheduler loop
+# blocks for that whole time, which is fine — posts are hours apart.
+RETRY_DELAYS_SECONDS = (15, 30, 60, 90)
+
+# The statuses worth waiting out: rate limits and server-side/gateway faults.
+# Everything else (auth, bad request, an unknown model) fails the same way on
+# every attempt, so retrying it only burns quota and delays the fallback.
+TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+# Bound as a module global so tests can replace it with a recorder; a direct
+# `time.sleep(...)` call would be unpatchable without touching the stdlib.
+sleep = time.sleep
+
+
+def transient_status(exc: BaseException) -> Optional[int]:
+    """Return the HTTP status of ``exc`` if it is one worth retrying, else None.
+
+    Each SDK spells the status differently — google-genai's ``APIError`` has
+    ``.code``, anthropic's and openai's ``APIStatusError`` have
+    ``.status_code`` — so both are read with ``getattr`` rather than by
+    importing (and thereby requiring) three SDKs here. An exception carrying no
+    status at all, including our own RuntimeErrors for a refusal or an empty
+    reply, is not transient.
+    """
+    for attribute in ("code", "status_code"):
+        status = getattr(exc, attribute, None)
+        # bool is an int subclass; a True/False attribute is not a status.
+        if isinstance(status, bool) or not isinstance(status, int):
+            continue
+        if status in TRANSIENT_STATUS_CODES:
+            return status
+    return None
 
 # Appended to prompts that do NOT contain the placeholder inline, so every
 # character still gets the "avoid repeats" context.
@@ -62,8 +110,37 @@ def configure(persona):
     return provider
 
 
+def _generate_with_retries(provider, prompt: str, model: str, generation_config: dict) -> str:
+    """Call ``provider.generate``, retrying transient failures with backoff.
+
+    Walks ``RETRY_DELAYS_SECONDS``; anything ``transient_status`` does not
+    recognise is re-raised on the first attempt, and the last exception is
+    re-raised once the schedule is exhausted.
+    """
+    max_attempts = len(RETRY_DELAYS_SECONDS) + 1
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return provider.generate(prompt, model, generation_config)
+        except Exception as exc:
+            status = transient_status(exc)
+            if status is None or attempt == max_attempts:
+                raise
+            delay = RETRY_DELAYS_SECONDS[attempt - 1]
+            logger.warning(
+                f"{provider.name} returned {status} on attempt {attempt}/{max_attempts} "
+                f"({exc}); retrying in {delay}s"
+            )
+            sleep(delay)
+
+
 def generate_quote(persona, recent_quotes: list) -> str:
     """Generate a single quote for ``persona``. Exceptions propagate to callers.
+
+    Transient provider failures (see ``TRANSIENT_STATUS_CODES``) are retried
+    here on the ``RETRY_DELAYS_SECONDS`` backoff before anything propagates, so
+    a caller only sees an exception once the provider has failed every attempt
+    — or failed for a reason retrying cannot fix.
 
     ``configure(persona)`` must have run first.
     """
@@ -72,7 +149,9 @@ def generate_quote(persona, recent_quotes: list) -> str:
     provider = providers.get_provider(persona.PROVIDER)
     model = persona.MODEL or provider.default_model
 
-    quote = provider.generate(formatted_prompt, model, persona.GENERATION_CONFIG).strip()
+    quote = _generate_with_retries(
+        provider, formatted_prompt, model, persona.GENERATION_CONFIG
+    ).strip()
 
     # Remove one pair of surrounding double quotes if present. The length guard
     # keeps a lone `"` from being read as its own opening AND closing quote,

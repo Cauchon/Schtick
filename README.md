@@ -215,7 +215,8 @@ stack: **[RASPBERRY_PI.md](RASPBERRY_PI.md)**.
 - The engine (`schtick/`) reads your character file — the frontmatter and the voice.
 - For each post, the character's AI — Gemini or Claude — writes a fresh line in that voice.
 - A dedup cache remembers the last 100 posts and retries so the character doesn't repeat itself.
-- If generation fails, it posts a `fallback` it hasn't used yet — and once they're all used, it skips that slot rather than repeat itself.
+- If the AI is overloaded or rate-limited, it waits and tries again — up to five attempts over about three minutes — before giving up on the slot.
+- If generation fails anyway, it posts a `fallback` it hasn't used yet — and once they're all used, it skips that slot rather than repeat itself.
 - It posts on startup unless it already posted within the last `post_interval_minutes` (so a restart doesn't cost you an extra post), then every `post_interval_minutes` — forever.
 - The engine is generic: `schtick/` contains zero character-specific code. Everything about a character lives in its markdown file.
 

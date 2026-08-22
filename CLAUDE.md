@@ -20,9 +20,10 @@ behavior, it belongs in its character file as data the engine already reads.
   directory relative to the package location, not cwd — overridable via
   `SCHTICK_CHARACTERS_DIR`, needed because Docker's cwd is
   `/home/appuser/data`, not the repo.
-- `schtick/generation.py` — prompt building + provider dispatch, shared by all
-  personas. `configure(persona)` resolves the provider's API key from the env
-  and must run before `generate_quote`.
+- `schtick/generation.py` — prompt building + provider dispatch + the
+  transient-failure retry policy (see Gotchas), shared by all personas.
+  `configure(persona)` resolves the provider's API key from the env and must
+  run before `generate_quote`.
 - `schtick/providers.py` — the AI services. One class per provider
   (`gemini`, `anthropic`, `deepseek`), registered in `PROVIDERS`; each declares its
   `api_key_env`, `default_model`, and `generate()`. SDK imports are lazy so a
@@ -100,11 +101,26 @@ to Bluesky, so it duplicates bot.py's three state filenames instead.
   `./data/<slug>` on the host. The legacy-migration logic is still present:
   `load_recent_posts` adopts a legacy `recent_posts.json` into the per-slug
   file on first run.
+- **Transient provider failures are retried in `generation.py`, not in
+  bot.py.** `generate_quote` wraps the provider call in a backoff loop:
+  `RETRY_DELAYS_SECONDS = (15, 30, 60, 90)` — 5 attempts over ~3.25 minutes —
+  fired only when `transient_status(exc)` finds a status in
+  `TRANSIENT_STATUS_CODES` (429, 500, 502, 503, 504). The status is read
+  generically off `.code` (google-genai) or `.status_code`
+  (anthropic/openai) via `getattr`, so generation.py stays standard-library
+  and never imports an SDK. Everything else — other 4xx, our own
+  refusal/empty-text `RuntimeError`s, network errors with no status — still
+  propagates on the first call. This blocks the scheduler loop for up to
+  ~3 minutes during a bad patch, which is fine: posts are hours apart, and the
+  alternative is the August 2026 outage where one 503 killed the whole slot
+  while ~1 call in 3 was succeeding. `time.sleep` is bound as the module global
+  `generation.sleep` so tests can replace it; `tests/conftest.py` does that
+  autouse for the whole suite, so no test can ever sleep for real.
 - **Fallbacks are filtered like generated quotes.** `choose_quote` rejects
   anything in the dedup cache or over 300 chars, fallbacks included, and
   returns `None` when nothing is postable — `post_quote` then skips the slot.
-  A generation error ends the candidate stream immediately (one failed call,
-  not ten) and goes straight to the unused fallbacks.
+  A generation error ends the candidate stream immediately (one exhausted
+  retry sequence, not ten) and goes straight to the unused fallbacks.
 - **A post only counts if Bluesky took it.** `post_quote` returns False and
   skips the tweet when the Bluesky post fails; nothing is cached or
   timestamped, so the same quote may legitimately go out next slot. The
