@@ -132,7 +132,7 @@ character and a Claude character side by side.
 
 | `provider`  | Default model       | API key env var     | Get a key |
 |-------------|---------------------|---------------------|-----------|
-| `gemini`    | `gemini-flash-latest` | `GEMINI_API_KEY`    | [aistudio.google.com](https://aistudio.google.com) |
+| `gemini`    | `gemini-3.7-flash` | `GEMINI_API_KEY`    | [aistudio.google.com](https://aistudio.google.com) |
 | `anthropic` | `claude-sonnet-5`   | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
 | `deepseek`  | `deepseek-chat`     | `DEEPSEEK_API_KEY`  | [platform.deepseek.com](https://platform.deepseek.com) |
 

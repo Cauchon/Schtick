@@ -34,7 +34,12 @@ class GeminiProvider:
 
     name = "gemini"
     api_key_env = "GEMINI_API_KEY"
-    default_model = "gemini-flash-latest"
+    # A pinned stable release, not the `gemini-flash-latest` alias. The alias
+    # is hot-swapped to whatever Google ships next — stable, preview or
+    # experimental — and in August 2026 it resolved to something that returned
+    # 503 for over a day while the stable models answered fine. Bump this on
+    # purpose; characters can still pin their own with `model:`.
+    default_model = "gemini-3.7-flash"
     signup_url = "aistudio.google.com"
 
     def __init__(self):

@@ -61,6 +61,14 @@ to Bluesky, so it duplicates bot.py's three state filenames instead.
   quota is reserved for the running bots. Point a scratch copy of a character
   at `provider: deepseek` via `SCHTICK_CHARACTERS_DIR` so no committed
   character file changes.
+- **Don't use Gemini's `-latest` aliases as defaults.** `gemini-flash-latest`
+  is a hot-swapped pointer that can land on a preview/experimental release;
+  in August 2026 it returned 503 on every call for 24+ hours while
+  `gemini-3.6-flash`/`gemini-3.7-flash` worked. The provider default is a
+  pinned stable model; bump it deliberately. Diagnose a silent bot with
+  `python -m schtick status` (OVERDUE) and the log's
+  `No postable quote and no unused fallback left` line — with every fallback
+  already in the dedup cache, a provider outage is silence, not repeats.
 - **A missing `generation` key is meaningful.** Kramer's frontmatter
   deliberately omits `generation`; for the Gemini provider, absent means no
   `generation_config` is passed to Gemini at all, matching his
