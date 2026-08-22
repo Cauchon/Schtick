@@ -152,6 +152,34 @@ def test_post_quote_posts_an_unused_fallback_during_an_outage(tmp_path):
     assert posted == ["fallback two"]
 
 
+def test_post_quote_reports_success_only_after_bluesky_accepts(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.generate_quote = lambda: "a fresh line"
+    bluesky, tweets = [], []
+    bot.post_to_bluesky = lambda text: bluesky.append(text) or True
+    bot.post_to_twitter = lambda text: tweets.append(text) or True
+
+    assert bot.post_quote() is True
+    assert bluesky == ["a fresh line"]
+    assert tweets == ["a fresh line"]
+
+
+def test_post_quote_fails_and_skips_the_tweet_when_bluesky_rejects(tmp_path, caplog):
+    # Bluesky is the baseline platform: cross-posting a quote that never landed
+    # there would publish it under the character's name on Twitter only.
+    bot = make_bot(tmp_path)
+    bot.generate_quote = lambda: "a fresh line"
+    tweets = []
+    bot.post_to_bluesky = lambda text: False
+    bot.post_to_twitter = lambda text: tweets.append(text) or True
+
+    with caplog.at_level(logging.ERROR):
+        assert bot.post_quote() is False
+
+    assert tweets == []
+    assert "Bluesky post failed" in caplog.text
+
+
 def test_candidates_stop_at_the_first_generation_error(tmp_path):
     bot = make_bot(tmp_path)
     calls = []
