@@ -33,7 +33,7 @@ jobs:
       - name: Compile
         run: python -m py_compile schtick/*.py
 
-      # testpaths in pyproject.toml keeps this inside tests/ — the root-level
-      # test_bot.py is a live-API script and must never be collected.
+      # testpaths in pyproject.toml keeps collection inside tests/, which is
+      # hermetic: no network, no API keys, no generation quota spent.
       - name: Test
         run: python -m pytest

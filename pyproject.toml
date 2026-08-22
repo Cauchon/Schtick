@@ -39,9 +39,9 @@ dev = ["pytest>=8"]
 [project.scripts]
 schtick = "schtick.__main__:main"
 
-# testpaths keeps collection inside tests/. Notably it keeps the root-level
-# test_bot.py out: that is a legacy live-API script, not a pytest suite, and
-# collecting it would spend real generation quota.
+# testpaths keeps collection inside tests/, so a bare `pytest` never wanders
+# into scratch scripts or anything else at the repo root. The suite there is
+# hermetic; `python -m schtick preview` is the only path that spends quota.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

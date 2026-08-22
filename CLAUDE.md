@@ -45,11 +45,12 @@ the explicit form of running the posting scheduler for a slug.
 
 ## Gotchas
 
-- **Generation quota costs real money/limits.** Both `test_bot.py` and the
-  `preview` subcommand make real generation calls. Use them sparingly — at most
-  once per session, and only when a change touches the generation path; pass a
-  slug to halve the calls. Everything else verifies offline via `py_compile` /
-  imports / rendering the prompt with an empty recent-quotes list. When a live
+- **Generation quota costs real money/limits.** The `preview` subcommand is the
+  only thing here that makes real generation calls (the offline suite under
+  `tests/` never does). Use it sparingly — at most once per session, and only
+  when a change touches the generation path; `-n 1` keeps it to a single call.
+  Everything else verifies offline via `py_compile` / `python -m pytest` /
+  rendering the prompt with an empty recent-quotes list. When a live
   call is warranted, route it through DeepSeek rather than Gemini — the Gemini
   quota is reserved for the running bots. Point a scratch copy of a character
   at `provider: deepseek` via `SCHTICK_CHARACTERS_DIR` so no committed
@@ -107,8 +108,7 @@ the explicit form of running the posting scheduler for a slug.
 Docker Compose on a Raspberry Pi — a combined stack in a parent directory
 alongside an unrelated AdGuard service. Not Render (`render.yaml` was deleted
 as dead config). Services are `schtick-larry-david` and `schtick-kramer`,
-built from image `schtick:latest`. `deploy/schtick@.service` is a systemd
-alternative that isn't in use. See RASPBERRY_PI.md.
+built from image `schtick:latest`. See RASPBERRY_PI.md.
 
 Cutting over from the pre-rename service names (`larry-david-bot`,
 `kramer-bot`)? Run `docker compose up -d --build --remove-orphans` — without
