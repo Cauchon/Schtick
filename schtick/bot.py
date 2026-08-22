@@ -219,7 +219,12 @@ class PersonaBot:
             logger.error(f"Could not save {self.last_post_file}: {e}")
 
     def generate_quote(self) -> Optional[str]:
-        """Generate a new persona quote, or None if the provider errored."""
+        """Generate a new persona quote, or None if the provider errored.
+
+        ``generation.generate_quote`` has already ridden out its own backoff
+        schedule for transient failures by the time an exception lands here, so
+        None means "retried and still failing", not "one unlucky call".
+        """
         try:
             # Get last 10 recent posts to avoid repetition
             recent_quotes = self.recent_posts[-10:] if self.recent_posts else []
@@ -236,8 +241,11 @@ class PersonaBot:
     def _candidates(self, max_attempts: int) -> Iterable[str]:
         """Yield up to ``max_attempts`` generated quotes, stopping on an error.
 
-        A generation error ends the run rather than retrying: the provider is
-        down or over quota, and further attempts only burn quota to fail again.
+        Transient failures are already retried with backoff one level down, in
+        ``generation.generate_quote``. An error that still reaches here has
+        survived that whole schedule (or was never retryable — auth, bad
+        request), so the provider is down or over quota and further attempts
+        only burn quota to fail again: end the stream and take a fallback.
         """
         for _ in range(max_attempts):
             quote = self.generate_quote()
