@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 # The token character files use to mark where the recent-quotes block goes.
 RECENT_QUOTES_PLACEHOLDER = "{recent_quotes_text}"
 
+# Appended to prompts that do NOT contain the placeholder inline, so every
+# character still gets the "avoid repeats" context.
+RECENT_QUOTES_TRAILER = (
+    "\n\nRecent quotes (AVOID repeating these specific topics or exact phrasings):\n"
+    "{recent_quotes_text}\n"
+)
+
 # --- Transient-failure retry policy ----------------------------------------
 #
 # A provider outage is not all-or-nothing: in the August 2026 Gemini episode
@@ -62,13 +69,6 @@ def transient_status(exc: BaseException) -> Optional[int]:
         if status in TRANSIENT_STATUS_CODES:
             return status
     return None
-
-# Appended to prompts that do NOT contain the placeholder inline, so every
-# character still gets the "avoid repeats" context.
-RECENT_QUOTES_TRAILER = (
-    "\n\nRecent quotes (AVOID repeating these specific topics or exact phrasings):\n"
-    "{recent_quotes_text}\n"
-)
 
 
 def format_recent_quotes(recent_quotes: list) -> str:
