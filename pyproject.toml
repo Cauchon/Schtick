@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "schtick"
+version = "0.1.0"
+description = "Turn a written character into a bot that posts in-character quotes on a schedule."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# Deliberately NO `readme = "README.md"`: .dockerignore excludes root-level
+# *.md from the build context, so an in-image build could not find it.
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# Ranges here, exact pins in requirements.txt (the lock used by the Docker
+# image). `requests` is NOT a direct dependency — nothing in the repo imports
+# it; it arrives transitively via tweepy, which is free to resolve a current,
+# unpatched-CVE version.
+dependencies = [
+    "atproto>=0.0.71,<0.1",
+    "google-genai>=2.19,<3",
+    "anthropic>=1.0,<2",
+    "python-dotenv>=1.0,<2",
+    "PyYAML>=6.0,<7",
+    "schedule>=1.2,<2",
+    "tweepy>=4.14,<5",
+]
+
+[project.scripts]
+schtick = "schtick.__main__:main"
+
+[tool.setuptools]
+# Only the engine package. `characters/` is data the engine finds on disk
+# (schtick/persona.py resolves it relative to the package file), not package
+# data — see the Dockerfile comment about the editable install.
+packages = ["schtick"]

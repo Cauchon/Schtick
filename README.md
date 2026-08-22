@@ -46,6 +46,13 @@ pip install -r requirements.txt
 python -m schtick new
 ```
 
+Needs Python 3.11 or newer. `requirements.txt` is the pinned list the Docker
+image installs; run the commands below from the checkout and they'll find the
+engine. Prefer an installed package (and a plain `schtick` command you can run
+from anywhere)? Use `pip install -e .` instead — same dependencies, resolved
+from the ranges in `pyproject.toml`. Keep it editable: the engine locates your
+`characters/` directory next to the package.
+
 The `new` wizard asks for the character's name, which AI should write its quotes
 (Gemini or Claude), then your Bluesky handle, app password, and that AI's API key
 (credentials are hidden as you type; leave any blank to drop in a placeholder you

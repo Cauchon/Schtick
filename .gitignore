@@ -6,3 +6,8 @@ __pycache__/
 recent_posts.json
 recent_posts_*.json
 data/
+
+# Packaging build artifacts (`pip install -e .`)
+*.egg-info/
+build/
+dist/

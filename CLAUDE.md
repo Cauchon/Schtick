@@ -72,6 +72,18 @@ the explicit form of running the posting scheduler for a slug.
   The legacy-migration logic is still present: `load_recent_posts` adopts a
   legacy `recent_posts.json` into the per-slug file on first run.
 
+- **`pyproject.toml` declares ranges; `requirements.txt` is the lock** the
+  Docker image installs (every line pinned, resolved on 3.12). Add a
+  dependency in both. `requests` is deliberately not a direct dependency —
+  nothing imports it; it comes in via tweepy. Don't put `readme =
+  "README.md"` in pyproject: `.dockerignore` drops root-level `*.md`, so an
+  in-image build would fail to find it.
+- **The image installs the project EDITABLE (`pip install --no-deps -e .`)
+  and that is load-bearing.** `persona.py` finds `characters/` at
+  `Path(__file__).parent.parent`, so a regular site-packages install makes
+  every slug "unknown". Editable (or `SCHTICK_CHARACTERS_DIR`) is the fix;
+  `PYTHONPATH=/app` is gone.
+
 ## Deployment
 
 Docker Compose on a Raspberry Pi — a combined stack in a parent directory
