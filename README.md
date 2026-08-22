@@ -171,7 +171,7 @@ the bot just posts to Bluesky — Bluesky is always the baseline.
 ## Keep it running
 
 `run` holds the terminal open, which is fine for testing. To keep a character
-live across reboots, run it as a container or a service.
+live across reboots, run it as a container on your own machine.
 
 ### Docker
 
@@ -190,18 +190,8 @@ restarts. All services share one image, `schtick:latest`. (Renaming services
 from an older setup? Add `--remove-orphans` to that command to clean up the old
 containers.)
 
-### systemd
-
-Prefer native processes? [`deploy/schtick@.service`](deploy/schtick@.service) is
-a template unit: `sudo systemctl enable --now schtick@aunt_carol`.
-
 Full Raspberry Pi walkthrough, including fitting this into an existing Compose
 stack: **[RASPBERRY_PI.md](RASPBERRY_PI.md)**.
-
-### Hosted
-
-A one-click hosted deploy is planned — not here yet. For now, Schtick runs on
-your own machine.
 
 ## How it works
 

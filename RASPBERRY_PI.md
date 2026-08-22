@@ -239,12 +239,3 @@ on GitHub; everything it did now lives in `Larry-David-Bot`.
   `recent_posts_<slug>.json` inside it is non-empty — an unmounted or
   freshly-created empty data dir means the duplicate cache resets on every
   restart.
-
-## Alternative: systemd
-
-If you'd rather run the bots as native processes instead of Docker
-containers, `deploy/schtick@.service` is a systemd template unit that
-runs `python -m schtick %i` per persona (e.g.
-`schtick@larry_david`), loading `.env.%i` via `EnvironmentFile`. This
-isn't the setup in use on the Pi today; see the unit file and
-`schtick/__main__.py` for how it wires up if you need it.

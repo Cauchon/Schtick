@@ -7,7 +7,7 @@ recent_posts*.json
 last_post_*.json
 .DS_Store
 .claude
-deploy/
+tools/
 *.md
 data/
 venv/
