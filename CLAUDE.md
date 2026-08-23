@@ -39,22 +39,29 @@ No engine changes.
 
 CLI subcommands beyond the bare `<slug>` form: `new` scaffolds a
 `characters/<slug>.md` template and prints a ready-to-paste compose service
-block; `preview` generates one sample post for a persona without publishing
-it (a real call to the character's provider); `list` prints the available
-persona slugs; `run` is
+block; `doctor` validates character data, credentials and storage without any
+network calls by default (`--live` opts into one generation and a Bluesky login,
+but never posts); `preview` generates one sample post for a persona without
+publishing it (a real call to the character's provider); `list` prints the
+available persona slugs; `run` is
 the explicit form of running the posting scheduler for a slug. `status` is a
 read-only report — last post, next post (flagged OVERDUE when the due time has
 passed, the only liveness signal there is without a heartbeat), the dedup
 cache and a log tail — read straight from the state files under `--data-dir`
 / `SCHTICK_DATA_DIR` (`DIR/<slug>/`, the compose bind-mount layout, else
 `DIR/` itself); it must never import `schtick.bot`, whose constructor logs in
-to Bluesky, so it duplicates bot.py's three state filenames instead.
+to Bluesky, so it duplicates bot.py's three state filenames instead. `status
+--json` serializes the same report and still exits zero for overdue state.
+`health` is the monitoring counterpart: it exits nonzero for missing,
+unreadable or overdue state, with a default 10-minute retry grace, and powers
+the Compose health checks.
 
 ## Gotchas
 
-- **Generation quota costs real money/limits.** The `preview` subcommand is the
-  only thing here that makes real generation calls (the offline suite under
-  `tests/` never does). Use it sparingly — at most once per session, and only
+- **Generation quota costs real money/limits.** The `preview` subcommand and
+  the explicitly opt-in `doctor --live` check make real generation calls (the
+  offline suite under `tests/` never does). Use them sparingly — at most once
+  per session, and only
   when a change touches the generation path; `-n 1` keeps it to a single call.
   Everything else verifies offline via `py_compile` / `python -m pytest` /
   rendering the prompt with an empty recent-quotes list. When a live

@@ -7,9 +7,11 @@ Turn a written character into a bot that posts on a schedule.
 Usage:
     python -m schtick new                    Create a new character (interactive)
     python -m schtick list                   List your characters
+    python -m schtick doctor [slug]          Validate configuration without posting
     python -m schtick preview <slug> [-n N]  Hear a character before going live
     python -m schtick run <slug>             Start the bot (posts on a schedule)
     python -m schtick status [slug]          Is it alive? When did it last post?
+    python -m schtick health [slug]          Monitoring-friendly liveness check
     python -m schtick <slug>                 Same as 'run <slug>' (used by Docker)
 
 The slug is a character's filename stem, e.g. 'larry_david'. The slug may also
@@ -38,7 +40,7 @@ from schtick.persona import load_persona, available_personas, characters_dir
 
 logger = logging.getLogger(__name__)
 
-SUBCOMMANDS = {"new", "list", "preview", "run", "status"}
+SUBCOMMANDS = {"new", "list", "doctor", "preview", "run", "status", "health"}
 
 USAGE = """\
 Schtick — turn a written character into a bot that posts on a schedule.
@@ -46,6 +48,10 @@ Schtick — turn a written character into a bot that posts on a schedule.
 Usage:
   python -m schtick new                     Create a new character (interactive)
   python -m schtick list                    List your characters
+  python -m schtick doctor [slug]           Validate character, credentials and
+                                            storage without posting or spending
+                                            generation quota. Add --live to test
+                                            the AI provider and Bluesky login.
   python -m schtick preview <slug> [-n N]   Hear a character before going live
                                             (generates N quotes without posting;
                                             each is one live API call against the
@@ -55,7 +61,12 @@ Usage:
                                             (reads the state files a running bot
                                             writes; --data-dir DIR says where to
                                             look, --log-lines N how much log to
-                                            show. Never posts or calls an API.)
+                                            show, --json for machine-readable
+                                            output. Never posts or calls an API.)
+  python -m schtick health [slug]           Exit 0 when selected characters are
+                                            current, 1 otherwise. Allows a 10m
+                                            retry grace by default; --json and
+                                            --quiet are available for monitors.
   python -m schtick <slug>                  Same as 'run <slug>' (used by Docker)
 
 The slug is a character's filename, e.g. 'larry_david'. You can also set the
@@ -178,6 +189,81 @@ def cmd_list(args):
 
 
 # --------------------------------------------------------------------------- #
+# doctor [slug] [--data-dir DIR] [--live]
+# --------------------------------------------------------------------------- #
+
+def _print_doctor_report(report):
+    name = report.display_name or report.slug
+    print(f"{name}  ({report.slug})")
+    labels = {"pass": "PASS", "warning": "WARN", "error": "FAIL"}
+    for check in report.checks:
+        print(f"  {labels[check.level]:4}  {check.name}: {check.message}")
+    print(f"  result: {report.errors} error(s), {report.warnings} warning(s)")
+
+
+def cmd_doctor(args):
+    slug = None
+    data_dir = None
+    live = False
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--data-dir", "-d"):
+            i += 1
+            if i >= len(args):
+                print("Error: --data-dir needs a directory, e.g. --data-dir data")
+                sys.exit(1)
+            data_dir = args[i]
+        elif arg == "--live":
+            live = True
+        elif arg.startswith("-"):
+            print(f"Error: unknown option '{arg}'.")
+            print("Usage: python -m schtick doctor [slug] [--data-dir DIR] [--live]")
+            sys.exit(1)
+        elif slug is None:
+            slug = arg
+        else:
+            print(f"Error: unexpected argument '{arg}'.")
+            print("Usage: python -m schtick doctor [slug] [--data-dir DIR] [--live]")
+            sys.exit(1)
+        i += 1
+
+    slugs = available_personas()
+    if slug and slug not in slugs:
+        print(f"Unknown persona '{slug}'. Available personas: {', '.join(slugs)}")
+        sys.exit(1)
+    selected = [slug] if slug else slugs
+    if not selected:
+        print("No characters yet. Create one with:  python -m schtick new")
+        sys.exit(1)
+
+    from schtick.diagnostics import inspect_character, run_live_checks
+
+    base = _status_data_dir(data_dir)
+    reports = []
+    for selected_slug in selected:
+        report = inspect_character(selected_slug, base)
+        if live:
+            run_live_checks(report)
+        reports.append(report)
+
+    for index, report in enumerate(reports):
+        _print_doctor_report(report)
+        if index < len(reports) - 1:
+            print()
+
+    errors = sum(report.errors for report in reports)
+    warnings = sum(report.warnings for report in reports)
+    print(f"\nDoctor {'failed' if errors else 'passed'}: {errors} error(s), {warnings} warning(s).")
+    if live:
+        print("Live mode never posts; generation and login results are shown above.")
+    else:
+        print("Offline checks only; use --live to test the provider and Bluesky login.")
+    if errors:
+        sys.exit(1)
+
+
+# --------------------------------------------------------------------------- #
 # status [slug] [--data-dir DIR] [--log-lines N]
 # --------------------------------------------------------------------------- #
 #
@@ -188,6 +274,7 @@ def cmd_list(args):
 # for the definitions these must stay in step with.
 
 DEFAULT_LOG_LINES = 5
+DEFAULT_HEALTH_GRACE_MINUTES = 10
 
 
 def _state_filenames(slug: str) -> "tuple[str, str, str]":
@@ -281,63 +368,132 @@ def _tail_lines(path: Path, count: int, block_size: int = 8192) -> "list[str]":
     return lines[-count:]
 
 
-def _print_status(persona, base: Path, log_lines: int, now: datetime):
-    """Print one character's status block. Never raises on a bad state file."""
+def _status_record(persona, base: Path, log_lines: int, now: datetime) -> dict:
+    """Build one serializable status record. Never raises on bad state files."""
     slug = persona.SLUG
     last_post_name, cache_name, log_name = _state_filenames(slug)
-
-    print(f"{persona.DISPLAY_NAME}  ({slug})")
-
     try:
         provider = providers.get_provider(persona.PROVIDER)
         model = persona.MODEL or provider.default_model
-        print(f"  provider:  {persona.PROVIDER} ({model})")
     except ValueError:
-        print(f"  provider:  {persona.PROVIDER} (unknown provider)")
+        model = None
     interval_minutes = int(persona.POST_INTERVAL_MINUTES)
-    print(f"  interval:  every {_humanize_minutes(interval_minutes)}")
+
+    record = {
+        "slug": slug,
+        "name": persona.DISPLAY_NAME,
+        "provider": persona.PROVIDER,
+        "model": model,
+        "interval_minutes": interval_minutes,
+        "status": "unknown",
+        "state_dir": None,
+        "last_post": {"status": "missing", "at": None, "age_seconds": None},
+        "next_post": {"status": "unknown", "at": None, "seconds_until": None},
+        "cache": {"status": "missing", "count": None, "latest": None},
+        "log": [],
+    }
 
     state_dir = _find_state_dir(base, slug)
     if state_dir is None:
-        print(f"  state:     no state found (looked in {base / slug} and {base})")
-        return
+        return record
 
-    print(f"  state:     {state_dir}")
+    record["state_dir"] = str(state_dir)
 
     # --- last post / next post: the liveness signal ------------------------ #
-    last_post = _read_last_post_time(state_dir / last_post_name)
+    last_post_path = state_dir / last_post_name
+    last_post = _read_last_post_time(last_post_path)
     if last_post is None:
-        if (state_dir / last_post_name).exists():
-            print(f"  last post: unreadable ({last_post_name})")
-        else:
-            print("  last post: never (no post recorded yet)")
-        print("  next post: unknown")
+        record["last_post"]["status"] = "unreadable" if last_post_path.exists() else "missing"
     else:
-        stamp = last_post.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"  last post: {_humanize_delta(now - last_post)} ago  ({stamp})")
+        age_seconds = max(0, int((now - last_post).total_seconds()))
+        record["last_post"] = {
+            "status": "ok",
+            "at": last_post.isoformat(),
+            "age_seconds": age_seconds,
+        }
         due = last_post + timedelta(minutes=interval_minutes)
-        due_stamp = due.strftime("%Y-%m-%d %H:%M:%S")
         if due <= now:
-            print(f"  next post: OVERDUE by {_humanize_delta(now - due)}  "
-                  f"(was due {due_stamp})")
+            record["status"] = "overdue"
+            record["next_post"] = {
+                "status": "overdue",
+                "at": due.isoformat(),
+                "seconds_until": -max(0, int((now - due).total_seconds())),
+            }
         else:
-            print(f"  next post: in {_humanize_delta(due - now)}  ({due_stamp})")
+            record["status"] = "healthy"
+            record["next_post"] = {
+                "status": "scheduled",
+                "at": due.isoformat(),
+                "seconds_until": max(0, int((due - now).total_seconds())),
+            }
 
     # --- the dedup cache: newest post text + how many are remembered ------- #
-    cache = _read_recent_posts(state_dir / cache_name)
+    cache_path = state_dir / cache_name
+    cache = _read_recent_posts(cache_path)
     if cache is None:
-        if (state_dir / cache_name).exists():
-            print(f"  latest:    unreadable ({cache_name})")
-        else:
-            print(f"  latest:    no posts cached ({cache_name} not written yet)")
-    elif not cache:
-        print("  latest:    0 posts cached")
+        record["cache"]["status"] = "unreadable" if cache_path.exists() else "missing"
     else:
-        print(f"  latest:    {cache[-1]}")
-        print(f"             ({len(cache)} posts cached)")
+        record["cache"] = {
+            "status": "ok",
+            "count": len(cache),
+            "latest": cache[-1] if cache else None,
+        }
 
     # --- the tail of the log ----------------------------------------------- #
-    tail = _tail_lines(state_dir / log_name, log_lines)
+    record["log"] = _tail_lines(state_dir / log_name, log_lines)
+    return record
+
+
+def _print_status_record(record: dict, base: Path):
+    """Render one status record in the original human-readable format."""
+    slug = record["slug"]
+    last_post_name, cache_name, log_name = _state_filenames(slug)
+    print(f"{record['name']}  ({slug})")
+    if record["model"] is None:
+        print(f"  provider:  {record['provider']} (unknown provider)")
+    else:
+        print(f"  provider:  {record['provider']} ({record['model']})")
+    print(f"  interval:  every {_humanize_minutes(record['interval_minutes'])}")
+
+    if record["state_dir"] is None:
+        print(f"  state:     no state found (looked in {base / slug} and {base})")
+        return
+    print(f"  state:     {record['state_dir']}")
+
+    last_post = record["last_post"]
+    if last_post["status"] == "unreadable":
+        print(f"  last post: unreadable ({last_post_name})")
+        print("  next post: unknown")
+    elif last_post["status"] == "missing":
+        print("  last post: never (no post recorded yet)")
+        print("  next post: unknown")
+    else:
+        at = datetime.fromisoformat(last_post["at"])
+        print(f"  last post: {_humanize_delta(timedelta(seconds=last_post['age_seconds']))} "
+              f"ago  ({at:%Y-%m-%d %H:%M:%S})")
+        next_post = record["next_post"]
+        due = datetime.fromisoformat(next_post["at"])
+        if next_post["status"] == "overdue":
+            print(f"  next post: OVERDUE by "
+                  f"{_humanize_delta(timedelta(seconds=-next_post['seconds_until']))}  "
+                  f"(was due {due:%Y-%m-%d %H:%M:%S})")
+        else:
+            print(f"  next post: in "
+                  f"{_humanize_delta(timedelta(seconds=next_post['seconds_until']))}  "
+                  f"({due:%Y-%m-%d %H:%M:%S})")
+
+    cache = record["cache"]
+    if cache["status"] == "unreadable":
+        print(f"  latest:    unreadable ({cache_name})")
+    elif cache["status"] == "missing":
+        print(f"  latest:    no posts cached ({cache_name} not written yet)")
+    elif not cache["count"]:
+        print("  latest:    0 posts cached")
+    else:
+        print(f"  latest:    {cache['latest']}")
+        print(f"             ({cache['count']} posts cached)")
+
+    tail = record["log"]
     if not tail:
         print(f"  log:       nothing to show ({log_name})")
     else:
@@ -346,10 +502,34 @@ def _print_status(persona, base: Path, log_lines: int, now: datetime):
             print(f"    {line}")
 
 
+def _print_status(persona, base: Path, log_lines: int, now: datetime):
+    """Print one character's status block. Kept as a helper for callers/tests."""
+    _print_status_record(_status_record(persona, base, log_lines, now), base)
+
+
+def _load_status_personas(slug: "str | None") -> "tuple[list, list[dict]]":
+    """Load selected characters while retaining per-file errors for JSON."""
+    if slug:
+        try:
+            return [load_persona(slug)], []
+        except Exception as exc:
+            return [], [{"slug": slug, "error": str(exc)}]
+
+    loaded = []
+    errors = []
+    for available in available_personas():
+        try:
+            loaded.append(load_persona(available))
+        except Exception as exc:
+            errors.append({"slug": available, "error": str(exc)})
+    return loaded, errors
+
+
 def cmd_status(args):
     slug = None
     data_dir = None
     log_lines = DEFAULT_LOG_LINES
+    as_json = False
     i = 0
     while i < len(args):
         arg = args[i]
@@ -372,6 +552,11 @@ def cmd_status(args):
             if log_lines < 0:
                 print("Error: --log-lines cannot be negative.")
                 sys.exit(1)
+        elif arg == "--json":
+            as_json = True
+        elif arg.startswith("-"):
+            print(f"Error: unknown option '{arg}'.")
+            sys.exit(1)
         elif slug is None:
             slug = arg
         else:
@@ -380,32 +565,167 @@ def cmd_status(args):
             sys.exit(1)
         i += 1
 
-    if slug:
-        try:
-            personas = [load_persona(slug)]
-        except ValueError as e:
-            print(e)
-            sys.exit(1)
-    else:
-        personas = []
-        for available in available_personas():
-            try:
-                personas.append(load_persona(available))
-            except ValueError as e:
-                print(f"{available}  —  (could not load: {e})\n")
-
-    if not personas:
-        print("No characters yet. Create one with:  python -m schtick new")
-        return
-
     base = _status_data_dir(data_dir)
     # Naive local time, because last_post is naive local (see bot.py's
     # save_last_post_time docstring).
     now = datetime.now()
-    for index, persona in enumerate(personas):
-        _print_status(persona, base, log_lines, now)
+    personas, errors = _load_status_personas(slug)
+    records = [_status_record(persona, base, log_lines, now) for persona in personas]
+
+    if as_json:
+        statuses = {record["status"] for record in records}
+        overall = (
+            "overdue" if "overdue" in statuses else
+            "unknown" if errors or "unknown" in statuses or not records else
+            "healthy"
+        )
+        print(json.dumps({
+            "generated_at": now.isoformat(),
+            "data_dir": str(base),
+            "status": overall,
+            "characters": records,
+            "errors": errors,
+        }, indent=2, sort_keys=True))
+        if slug and errors:
+            sys.exit(1)
+        return
+
+    if errors:
+        for error in errors:
+            if slug:
+                print(error["error"])
+            else:
+                print(f"{error['slug']}  —  (could not load: {error['error']})\n")
+    if not records:
+        print("No characters yet. Create one with:  python -m schtick new")
+        if slug:
+            sys.exit(1)
+        return
+
+    for index, record in enumerate(records):
+        _print_status_record(record, base)
         if index < len(personas) - 1:
             print()
+
+
+# --------------------------------------------------------------------------- #
+# health [slug] [--data-dir DIR] [--grace-minutes N] [--json] [--quiet]
+# --------------------------------------------------------------------------- #
+
+def _health_assessment(record: dict, grace_minutes: int) -> dict:
+    """Return a monitoring verdict for a status record."""
+    if record["state_dir"] is None:
+        return {"healthy": False, "reason": "no_state"}
+    if record["last_post"]["status"] == "missing":
+        return {"healthy": False, "reason": "never_posted"}
+    if record["last_post"]["status"] == "unreadable":
+        return {"healthy": False, "reason": "unreadable_last_post"}
+    if record["next_post"]["status"] == "scheduled":
+        return {"healthy": True, "reason": "on_schedule"}
+
+    overdue_seconds = -record["next_post"]["seconds_until"]
+    grace_seconds = grace_minutes * 60
+    if overdue_seconds <= grace_seconds:
+        return {
+            "healthy": True,
+            "reason": "within_grace",
+            "grace_remaining_seconds": grace_seconds - overdue_seconds,
+        }
+    return {
+        "healthy": False,
+        "reason": "overdue",
+        "overdue_seconds": overdue_seconds,
+    }
+
+
+def cmd_health(args):
+    slug = None
+    data_dir = None
+    grace_minutes = DEFAULT_HEALTH_GRACE_MINUTES
+    as_json = False
+    quiet = False
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--data-dir", "-d"):
+            i += 1
+            if i >= len(args):
+                print("Error: --data-dir needs a directory, e.g. --data-dir data")
+                sys.exit(1)
+            data_dir = args[i]
+        elif arg == "--grace-minutes":
+            i += 1
+            if i >= len(args):
+                print("Error: --grace-minutes needs a whole number")
+                sys.exit(1)
+            try:
+                grace_minutes = int(args[i])
+            except ValueError:
+                print(f"Error: --grace-minutes expects a number, got '{args[i]}'.")
+                sys.exit(1)
+            if grace_minutes < 0:
+                print("Error: --grace-minutes cannot be negative.")
+                sys.exit(1)
+        elif arg == "--json":
+            as_json = True
+        elif arg == "--quiet":
+            quiet = True
+        elif arg.startswith("-"):
+            print(f"Error: unknown option '{arg}'.")
+            sys.exit(1)
+        elif slug is None:
+            slug = arg
+        else:
+            print(f"Error: unexpected argument '{arg}'.")
+            sys.exit(1)
+        i += 1
+
+    base = _status_data_dir(data_dir)
+    now = datetime.now()
+    personas, errors = _load_status_personas(slug)
+    records = [_status_record(persona, base, 0, now) for persona in personas]
+    results = []
+    for record in records:
+        result = dict(record)
+        result["health"] = _health_assessment(record, grace_minutes)
+        results.append(result)
+
+    healthy = bool(results) and not errors and all(
+        result["health"]["healthy"] for result in results
+    )
+    if not quiet:
+        if as_json:
+            print(json.dumps({
+                "generated_at": now.isoformat(),
+                "data_dir": str(base),
+                "healthy": healthy,
+                "grace_minutes": grace_minutes,
+                "characters": results,
+                "errors": errors,
+            }, indent=2, sort_keys=True))
+        else:
+            for result in results:
+                assessment = result["health"]
+                label = "OK" if assessment["healthy"] else "UNHEALTHY"
+                reason = assessment["reason"].replace("_", " ")
+                if assessment["reason"] == "on_schedule":
+                    reason = ("next post in " + _humanize_delta(timedelta(
+                        seconds=result["next_post"]["seconds_until"]
+                    )))
+                elif assessment["reason"] == "overdue":
+                    reason = ("overdue by " + _humanize_delta(timedelta(
+                        seconds=assessment["overdue_seconds"]
+                    )))
+                elif assessment["reason"] == "within_grace":
+                    reason = f"due, within {grace_minutes}m retry grace"
+                print(f"{label}  {result['name']} ({result['slug']}): {reason}")
+            for error in errors:
+                print(f"UNHEALTHY  {error['slug']}: {error['error']}")
+            if not results and not errors:
+                print("UNHEALTHY  no characters found")
+
+    if not healthy:
+        sys.exit(1)
 
 
 # --------------------------------------------------------------------------- #
@@ -556,6 +876,12 @@ def _compose_service_block(slug: str) -> str:
         f"    volumes:\n"
         f"      - ./data/{slug}:/home/appuser/data\n"
         f"    restart: unless-stopped\n"
+        f"    healthcheck:\n"
+        f"      test: [\"CMD\", \"python\", \"-m\", \"schtick\", \"health\", \"{slug}\", \"--data-dir\", \".\", \"--quiet\"]\n"
+        f"      interval: 5m\n"
+        f"      timeout: 10s\n"
+        f"      retries: 2\n"
+        f"      start_period: 5m\n"
     )
 
 
@@ -648,9 +974,11 @@ def _run_wizard():
     print(f"  1. Edit {char_path}")
     print("     Write the voice — this is the fun part. Replace the [bracketed]")
     print("     fill-ins and the two placeholder fallback lines in the header.")
-    print(f"  2. python -m schtick preview {slug}")
+    print(f"  2. python -m schtick doctor {slug}")
+    print("     Check the character, credentials and storage without making API calls.")
+    print(f"  3. python -m schtick preview {slug}")
     print("     Hear the character before going live.")
-    print(f"  3. python -m schtick run {slug}")
+    print(f"  4. python -m schtick run {slug}")
     print("     Go live — it posts on a schedule.\n")
     print("Running on Docker? Add this service to docker-compose.yml")
     print("(and create ./data/{}):\n".format(slug))
@@ -673,12 +1001,16 @@ def main():
             cmd_new(rest)
         elif command == "list":
             cmd_list(rest)
+        elif command == "doctor":
+            cmd_doctor(rest)
         elif command == "preview":
             cmd_preview(rest)
         elif command == "run":
             cmd_run(rest)
         elif command == "status":
             cmd_status(rest)
+        elif command == "health":
+            cmd_health(rest)
         return
 
     # Backward compatibility: a bare slug (or the PERSONA env var) runs the bot.

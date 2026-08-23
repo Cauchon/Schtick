@@ -99,6 +99,12 @@ stack file with:
     env_file: ./Larry-David-Bot/.env.kramer
     volumes:
       - ./Larry-David-Bot/data/kramer:/home/appuser/data
+    healthcheck:
+      test: ["CMD", "python", "-m", "schtick", "health", "kramer", "--data-dir", ".", "--quiet"]
+      interval: 5m
+      timeout: 10s
+      retries: 2
+      start_period: 5m
 
   schtick-larry-david:
     build: ./Larry-David-Bot
@@ -109,6 +115,12 @@ stack file with:
     env_file: ./Larry-David-Bot/.env.larry_david
     volumes:
       - ./Larry-David-Bot/data/larry_david:/home/appuser/data
+    healthcheck:
+      test: ["CMD", "python", "-m", "schtick", "health", "larry_david", "--data-dir", ".", "--quiet"]
+      interval: 5m
+      timeout: 10s
+      retries: 2
+      start_period: 5m
 ```
 
 The `adguardhome` service is untouched.
@@ -216,6 +228,14 @@ cat data/larry_david/recent_posts_larry_david.json | head -c 200
 ```
 Repeat for `schtick-kramer` / `data/kramer/`.
 
+After the first successful post, Compose should also report both services as
+healthy. The check is read-only and allows ten minutes beyond a scheduled post
+while provider retries are in progress:
+```bash
+docker compose ps
+python -m schtick health --data-dir data
+```
+
 **i. Retire `Kramer-Bot` — only after both bots are confirmed healthy.**
 Once both containers have been up and posting successfully for a cycle or
 two, remove the `Kramer-Bot` checkout from the Pi and archive that repository
@@ -223,6 +243,10 @@ on GitHub; everything it did now lives in `Larry-David-Bot`.
 
 ## Managing / troubleshooting
 
+- **Health**: `python -m schtick health --data-dir data` exits nonzero when a
+  bot has no readable post state or is overdue beyond the retry grace;
+  `python -m schtick status --data-dir data --json` provides the full
+  machine-readable state without changing its report-only exit behavior.
 - **Logs**: `docker compose logs -f <service>` (stdout/stderr, plus journald
   if the Docker daemon's log driver is journald), or the persona's own log
   file on the host at `data/<slug>/<slug>.log`.

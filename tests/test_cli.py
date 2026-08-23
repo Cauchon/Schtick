@@ -80,6 +80,7 @@ def test_compose_service_block_hyphenates_the_service_name_only():
     assert "      - ./data/aunt_carol:/home/appuser/data\n" in block
     assert "    image: schtick:latest\n" in block
     assert "    restart: unless-stopped\n" in block
+    assert '"health", "aunt_carol"' in block
 
 
 def test_compose_service_block_is_valid_yaml_under_a_services_key():
@@ -93,6 +94,16 @@ def test_compose_service_block_is_valid_yaml_under_a_services_key():
         "env_file": ".env.larry_david",
         "volumes": ["./data/larry_david:/home/appuser/data"],
         "restart": "unless-stopped",
+        "healthcheck": {
+            "test": [
+                "CMD", "python", "-m", "schtick", "health", "larry_david",
+                "--data-dir", ".", "--quiet",
+            ],
+            "interval": "5m",
+            "timeout": "10s",
+            "retries": 2,
+            "start_period": "5m",
+        },
     }
 
 
@@ -289,7 +300,9 @@ def test_main_usage_nudges_towards_new_when_there_are_no_characters(
 def test_main_dispatches_the_known_subcommands(characters, monkeypatch):
     # Guards the bare-slug fallback: anything in SUBCOMMANDS must reach its
     # handler, never run_bot (which would log in to Bluesky).
-    assert cli.SUBCOMMANDS == {"new", "list", "preview", "run", "status"}
+    assert cli.SUBCOMMANDS == {
+        "new", "list", "doctor", "preview", "run", "status", "health"
+    }
 
     dispatched = []
     for command in sorted(cli.SUBCOMMANDS):
@@ -299,7 +312,7 @@ def test_main_dispatches_the_known_subcommands(characters, monkeypatch):
     for command in sorted(cli.SUBCOMMANDS):
         run_cli(monkeypatch, command)
 
-    assert dispatched == ["list", "new", "preview", "run", "status"]
+    assert dispatched == ["doctor", "health", "list", "new", "preview", "run", "status"]
 
 
 def test_main_treats_an_unknown_first_argument_as_a_slug(characters, monkeypatch):

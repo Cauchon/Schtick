@@ -9,6 +9,7 @@ last_post_*.json
 data/
 .venv/
 .claude/worktrees/
+.Codex/worktrees/
 
 # Packaging build artifacts (`pip install -e .`)
 *.egg-info/

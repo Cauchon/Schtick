@@ -55,6 +55,11 @@ def run_status(monkeypatch, *argv):
     cli.main()
 
 
+def run_health(monkeypatch, *argv):
+    monkeypatch.setattr("sys.argv", ["schtick", "health", *argv])
+    cli.main()
+
+
 # --- _humanize_delta -------------------------------------------------------
 
 @pytest.mark.parametrize(
@@ -426,3 +431,179 @@ def test_the_state_filenames_match_the_bots(characters, monkeypatch):
         "recent_posts_aunt_carol.json",
         "aunt_carol.log",
     )
+
+
+# --- JSON status -----------------------------------------------------------
+
+def test_json_status_is_structured_and_keeps_status_exit_zero(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    last_post = datetime.now() - timedelta(minutes=20)
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=last_post,
+        cache=["the latest post"],
+        log="one\ntwo\n",
+    )
+
+    run_status(monkeypatch, "--data-dir", str(tmp_path), "--json")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "healthy"
+    assert payload["data_dir"] == str(tmp_path)
+    assert payload["errors"] == []
+    character = payload["characters"][0]
+    assert character["slug"] == "aunt_carol"
+    assert character["status"] == "healthy"
+    assert character["last_post"]["status"] == "ok"
+    assert character["next_post"]["status"] == "scheduled"
+    assert character["cache"] == {
+        "status": "ok", "count": 1, "latest": "the latest post"
+    }
+    assert character["log"] == ["one", "two"]
+
+
+def test_json_status_reports_overdue_without_failing(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=datetime.now() - timedelta(minutes=90),
+    )
+
+    run_status(monkeypatch, "--data-dir", str(tmp_path), "--json")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "overdue"
+    assert payload["characters"][0]["next_post"]["seconds_until"] < 0
+
+
+def test_json_status_contains_broken_character_errors_without_mixing_plain_text(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    (characters / "broken.md").write_text("no frontmatter\n", encoding="utf-8")
+
+    run_status(monkeypatch, "--data-dir", str(tmp_path), "--json")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "unknown"
+    assert payload["errors"][0]["slug"] == "broken"
+    assert payload["characters"][0]["slug"] == "aunt_carol"
+
+
+# --- monitoring health check ----------------------------------------------
+
+def test_health_exits_zero_for_a_current_character(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=datetime.now() - timedelta(minutes=20),
+    )
+
+    run_health(monkeypatch, "--data-dir", str(tmp_path))
+
+    out = capsys.readouterr().out
+    assert "OK" in out
+    assert "next post in" in out
+
+
+def test_health_allows_the_default_retry_grace(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    # Due five minutes ago, but the default grace is ten minutes.
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=datetime.now() - timedelta(minutes=65),
+    )
+
+    run_health(monkeypatch, "--data-dir", str(tmp_path))
+
+    assert "within 10m retry grace" in capsys.readouterr().out
+
+
+def test_health_exits_one_after_the_grace_period(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=datetime.now() - timedelta(minutes=75),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        run_health(monkeypatch, "--data-dir", str(tmp_path))
+
+    assert exc.value.code == 1
+    assert "UNHEALTHY" in capsys.readouterr().out
+
+
+def test_health_grace_can_be_overridden(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=datetime.now() - timedelta(minutes=65),
+    )
+
+    with pytest.raises(SystemExit):
+        run_health(
+            monkeypatch,
+            "--data-dir", str(tmp_path),
+            "--grace-minutes", "2",
+        )
+
+    assert "overdue by" in capsys.readouterr().out
+
+
+def test_health_is_unhealthy_when_state_is_missing(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+
+    with pytest.raises(SystemExit):
+        run_health(monkeypatch, "--data-dir", str(tmp_path))
+
+    assert "no state" in capsys.readouterr().out
+
+
+def test_quiet_health_produces_no_output_on_failure(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+
+    with pytest.raises(SystemExit):
+        run_health(monkeypatch, "--data-dir", str(tmp_path), "--quiet")
+
+    assert capsys.readouterr().out == ""
+
+
+def test_health_json_includes_verdict_and_reason(
+    characters, tmp_path, monkeypatch, capsys
+):
+    write_character(characters)
+    write_state(
+        tmp_path / "aunt_carol",
+        last_post=datetime.now() - timedelta(minutes=20),
+    )
+
+    run_health(monkeypatch, "--data-dir", str(tmp_path), "--json")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["healthy"] is True
+    assert payload["grace_minutes"] == 10
+    assert payload["characters"][0]["health"] == {
+        "healthy": True, "reason": "on_schedule"
+    }
+
+
+def test_health_is_documented_and_dispatched():
+    assert "health" in cli.SUBCOMMANDS
+    assert "python -m schtick health" in cli.USAGE
+    assert "python -m schtick health" in cli.__doc__

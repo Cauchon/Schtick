@@ -63,12 +63,19 @@ Now bring the character to life:
 
 ```bash
 # 1. Edit characters/<slug>.md — write the voice (this is the fun part)
-# 2. Hear it before going live:
+# 2. Check the setup — no API calls, no posting:
+python -m schtick doctor <slug>
+# 3. Hear it before going live:
 python -m schtick preview <slug>        # generate one quote, no posting
 python -m schtick preview <slug> -n 5   # hear five
-# 3. Go live — it posts immediately, then on a schedule:
+# 4. Go live — it posts immediately, then on a schedule:
 python -m schtick run <slug>
 ```
+
+`doctor` catches unfilled template text, malformed settings, missing or
+placeholder credentials, unusable fallbacks, and an unwritable data directory.
+It is offline by default. Add `--live` to generate one sample and test the
+Bluesky login without publishing anything; that mode uses generation quota.
 
 Each `preview` quote is one live API call, so it costs quota (or money) against
 your key — a handful at a time is plenty.
@@ -169,6 +176,7 @@ different Bluesky accounts.
 python -m schtick list              # every character you've written
 python -m schtick run aunt_carol    # go live with one
 python -m schtick status            # is everyone alive? when did they last post?
+python -m schtick health            # exit 0 if everyone is current, else 1
 ```
 
 `status` answers "is it still going?" without a dashboard. For each character it
@@ -180,6 +188,20 @@ character, `--log-lines N` for a longer tail, and `--data-dir DIR` (or
 `SCHTICK_DATA_DIR`) to say where the state lives — on a Docker host that's the
 checkout's `data/` tree, so run `SCHTICK_DATA_DIR=./data python -m schtick status`
 (or `--data-dir data`) from the checkout.
+
+For scripts and monitors, `status --json` emits the same report as structured
+JSON while retaining `status`'s report-only behavior: an overdue bot is reported
+but does not make the command fail. Use `health` when the exit code matters:
+
+```bash
+python -m schtick status --data-dir data --json
+python -m schtick health --data-dir data
+python -m schtick health aunt_carol --data-dir data --quiet
+```
+
+`health` exits 1 for missing, unreadable, or sufficiently overdue state. Its
+default 10-minute grace period avoids false alarms while a scheduled generation
+is retrying; change it with `--grace-minutes N`. It also supports `--json`.
 
 **X/Twitter is optional.** Add the `TWITTER_*` keys from [`env.example`](env.example)
 to a character's `.env.<slug>` and it'll cross-post there too. Leave them out and
@@ -203,7 +225,9 @@ docker compose up -d --build
 ```
 
 Each service bind-mounts `data/<slug>` so the dedup cache and log survive
-restarts. All services share one image, `schtick:latest`. (Renaming services
+restarts. The generated service block includes a Docker health check backed by
+the same read-only `health` command. All services share one image,
+`schtick:latest`. (Renaming services
 from an older setup? Add `--remove-orphans` to that command to clean up the old
 containers.)
 

@@ -37,6 +37,12 @@ services:
     volumes:
       - ./data/larry_david:/home/appuser/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "schtick", "health", "larry_david", "--data-dir", ".", "--quiet"]
+      interval: 5m
+      timeout: 10s
+      retries: 2
+      start_period: 5m
 
   schtick-kramer:
     build: .
@@ -46,6 +52,12 @@ services:
     volumes:
       - ./data/kramer:/home/appuser/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "schtick", "health", "kramer", "--data-dir", ".", "--quiet"]
+      interval: 5m
+      timeout: 10s
+      retries: 2
+      start_period: 5m
 
 # Add a third persona: `python -m schtick new` scaffolds a characters/<slug>.md
 # file and prints a ready-to-paste service block for this file (new slug for
