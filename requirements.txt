@@ -1,7 +1,7 @@
 # Lock file for the Docker image: pyproject.toml declares the dependency ranges, this file pins the versions resolved against Python 3.12.
 atproto==0.0.71
 google-genai==2.19.0
-anthropic==1.0.0
+anthropic==1.1.0
 openai==3.3.1
 python-dotenv==1.2.3
 PyYAML==6.0.3
