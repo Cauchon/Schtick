@@ -2,7 +2,7 @@
 atproto==0.0.71
 google-genai==2.19.0
 anthropic==1.0.0
-openai==3.3.1
+openai==3.7.0
 python-dotenv==1.2.3
 PyYAML==6.0.3
 schedule==1.2.2
