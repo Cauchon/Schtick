@@ -21,6 +21,8 @@ def workspace(tmp_path, monkeypatch):
         "ANTHROPIC_API_KEY",
         "DEEPSEEK_API_KEY",
         "OPENAI_API_KEY",
+        "X_ENABLED",
+        *diagnostics.TWITTER_ENV,
     ):
         monkeypatch.delenv(key, raising=False)
     return characters, data
@@ -212,3 +214,50 @@ def test_doctor_is_documented_and_dispatched():
     assert "doctor" in cli.SUBCOMMANDS
     assert "python -m schtick doctor" in cli.USAGE
     assert "python -m schtick doctor" in cli.__doc__
+
+
+@pytest.mark.parametrize("setting", [None, "false"])
+def test_doctor_ignores_partial_x_credentials_when_disabled(workspace, monkeypatch, setting):
+    characters, data = workspace
+    write_character(characters)
+    write_env(data.parent)
+    monkeypatch.setenv("TWITTER_BEARER_TOKEN", "offline-secret")
+    if setting is not None:
+        monkeypatch.setenv("X_ENABLED", setting)
+
+    report = diagnostics.inspect_character("aunt_carol", data)
+
+    assert report.errors == 0
+    check = next(c for c in report.checks if c.name == "X/Twitter")
+    assert check.level == "pass"
+    assert "disabled" in check.message
+
+
+@pytest.mark.parametrize("complete", [True, False])
+def test_doctor_checks_x_credentials_only_when_enabled(workspace, monkeypatch, complete):
+    characters, data = workspace
+    write_character(characters)
+    write_env(data.parent)
+    monkeypatch.setenv("X_ENABLED", "true")
+    for key in diagnostics.TWITTER_ENV:
+        monkeypatch.setenv(key, "offline-secret" if complete else "your-placeholder")
+
+    report = diagnostics.inspect_character("aunt_carol", data)
+
+    check = next(c for c in report.checks if c.name == "X/Twitter")
+    assert check.level == ("pass" if complete else "error")
+    assert "offline-secret" not in check.message
+    assert "your-placeholder" not in check.message
+
+
+def test_doctor_rejects_invalid_x_setting_without_exposing_value(workspace, monkeypatch):
+    characters, data = workspace
+    write_character(characters)
+    write_env(data.parent)
+    monkeypatch.setenv("X_ENABLED", "invalid-secret")
+
+    report = diagnostics.inspect_character("aunt_carol", data)
+
+    check = next(c for c in report.checks if c.name == "X/Twitter")
+    assert check.level == "error"
+    assert check.message == "X_ENABLED must be true or false"

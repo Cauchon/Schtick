@@ -15,6 +15,7 @@ from dotenv import dotenv_values
 
 from schtick import generation, providers
 from schtick.persona import _parse_frontmatter, characters_dir, load_persona
+from schtick.settings import TWITTER_ENV, x_enabled
 
 
 BLUESKY_CHAR_LIMIT = 300
@@ -28,13 +29,6 @@ KNOWN_FRONTMATTER_FIELDS = {
     "fallbacks",
 }
 REQUIRED_BLUESKY_ENV = ("BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD")
-TWITTER_ENV = (
-    "TWITTER_BEARER_TOKEN",
-    "TWITTER_API_KEY",
-    "TWITTER_API_SECRET",
-    "TWITTER_ACCESS_TOKEN",
-    "TWITTER_ACCESS_SECRET",
-)
 TEMPLATE_MARKERS = (
     "<Name>",
     "<PROVIDER_LINE>",
@@ -224,14 +218,24 @@ def _check_credentials(report: DoctorReport, provider_name: str) -> None:
         source = env_path if env_path.exists() else "process environment"
         report.add("pass", "credentials", f"required values are set ({source})")
 
-    configured_twitter = [key for key in TWITTER_ENV if not _looks_placeholder(effective.get(key))]
-    if configured_twitter and len(configured_twitter) != len(TWITTER_ENV):
-        missing_twitter = [key for key in TWITTER_ENV if key not in configured_twitter]
+    try:
+        enabled = x_enabled(effective)
+    except ValueError as exc:
+        report.add("error", "X/Twitter", str(exc))
+        return
+    if not enabled:
+        report.add("pass", "X/Twitter", "disabled (X_ENABLED=false); saved credentials ignored")
+        return
+
+    missing_twitter = [key for key in TWITTER_ENV if _looks_placeholder(effective.get(key))]
+    if missing_twitter:
         report.add(
-            "warning",
+            "error",
             "X/Twitter",
-            f"partially configured; missing {', '.join(missing_twitter)}",
+            f"enabled but missing or placeholder: {', '.join(missing_twitter)}",
         )
+    else:
+        report.add("pass", "X/Twitter", "enabled; credentials set (X API credits required; billing not checked)")
 
 
 def _check_storage(report: DoctorReport, base: Path) -> None:

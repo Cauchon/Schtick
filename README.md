@@ -19,7 +19,7 @@ Two characters run on Schtick today. They're the proof it works.
 
 Both character files select OpenAI, using the provider's `gpt-6-luna` default
 with low reasoning effort. New characters still default to Gemini unless
-another provider is selected.
+another provider is selected. Kramer and Larry David run with X cross-posting off.
 
 **Larry David** — neurotic, blunt, morally certain about things that don't matter.
 
@@ -35,7 +35,7 @@ another provider is selected.
 
 ## Write a character in 10 minutes
 
-You'll need three things, all free to start:
+You'll need three things (AI usage may require payment, depending on the provider):
 
 - An **AI API key** — Gemini from [aistudio.google.com](https://aistudio.google.com) (free tier works), Claude from [console.anthropic.com](https://console.anthropic.com), DeepSeek from [platform.deepseek.com](https://platform.deepseek.com), or OpenAI from [platform.openai.com](https://platform.openai.com).
 - A **Bluesky account** plus an **app password** — make one at bsky.app → Settings → App Passwords.
@@ -61,7 +61,9 @@ The `new` wizard asks for the character's name, which AI should write its quotes
 (Gemini, Claude, DeepSeek or OpenAI), then your Bluesky handle, app password, and that AI's API key
 (credentials are hidden as you type; leave any blank to drop in a placeholder you
 can fill in later). It writes two files: your character at `characters/<slug>.md`
-and its credentials at `.env.<slug>`.
+and its credentials at `.env.<slug>`. It also asks whether to enable X/Twitter
+cross-posting, defaulting to **No**. Opting in collects X credentials with hidden
+input; X API usage requires paid credits separately from your AI provider.
 
 Now bring the character to life:
 
@@ -252,9 +254,26 @@ python -m schtick health aunt_carol --data-dir data --quiet
 default 10-minute grace period avoids false alarms while a scheduled generation
 is retrying; change it with `--grace-minutes N`. It also supports `--json`.
 
-**X/Twitter is optional.** Add the `TWITTER_*` keys from [`env.example`](env.example)
-to a character's `.env.<slug>` and it'll cross-post there too. Leave them out and
-the bot just posts to Bluesky — Bluesky is always the baseline.
+### Optional X/Twitter cross-posting
+
+**X is off by default.** Schtick posts to Bluesky unless you explicitly set
+`X_ENABLED=true` in the character's `.env.<slug>` (or `.env` when there is no
+persona-specific file). Saved `TWITTER_*` credentials alone do not enable X.
+This also applies to existing installations upgrading from credential-based
+automatic cross-posting: explicitly opt in to keep posting to X.
+
+To enable X, set `X_ENABLED=true`, add all five `TWITTER_*` credentials from
+[`env.example`](env.example), and fund the applicable developer account's
+[X API credits](https://console.x.com/). X's API is paid; see the
+[current pricing](https://docs.x.com/x-api/getting-started/pricing).
+`doctor` reports whether X is disabled or enabled and checks required credentials
+offline; it does not verify X login, permissions or credit balance.
+
+Set `X_ENABLED=false` to turn X off without removing credentials. Restart the
+process after changing settings; with Compose, recreate the affected bot
+container so it receives the new environment. Bluesky remains the baseline:
+an X failure does not fail a successful Bluesky slot, and missed X posts are
+not queued for replay. Quotes longer than 280 characters skip X without truncation.
 
 ## Keep it running
 

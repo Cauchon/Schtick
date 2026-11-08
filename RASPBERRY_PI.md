@@ -30,7 +30,9 @@ for reference — Docker is the supported/actual setup this guide covers.
 - **Credentials.** Each persona gets its own `.env.<slug>` file
   (`.env.larry_david`, `.env.kramer`), loaded via `env_file:` in Compose — see
   `env.example` for the required keys (Bluesky handle/app password, Gemini
-  API key, optional Twitter API v2 credentials).
+  API key, optional X API v2 credentials). X is off unless `X_ENABLED=true`;
+  existing saved X credentials do not enable it. Kramer and Larry David use
+  `X_ENABLED=false` in their per-persona env files.
 
 ## Standalone use (running this repo's own `docker-compose.yml`)
 
@@ -40,11 +42,11 @@ This is the simplest case: this checkout owns the whole stack.
    ```bash
    cp env.example .env.larry_david
    nano .env.larry_david
-   # Add Larry David's Bluesky/Twitter/Gemini credentials
+   # Add Larry David's Bluesky and chosen AI provider credentials; leave X_ENABLED=false
 
    cp env.example .env.kramer
    nano .env.kramer
-   # Add Kramer's Bluesky/Twitter/Gemini credentials
+   # Add Kramer's Bluesky and chosen AI provider credentials; leave X_ENABLED=false
    ```
 
 2. **Create the data directories, owned by the container's user**. The
@@ -78,6 +80,17 @@ This is the simplest case: this checkout owns the whole stack.
    `data/kramer/kramer.log`.
 
 ## Running inside an existing Compose stack
+
+To change X posting, edit `X_ENABLED` in the relevant `.env.<slug>` file.
+`false` disables X while preserving credentials; `true` requires all five
+`TWITTER_*` values and paid credits in the [X developer console](https://console.x.com/).
+Recreate only the affected bot containers from the parent Compose directory
+to load updated environment values (a plain `docker compose restart` keeps the
+old environment):
+
+```bash
+docker compose up -d --no-deps --force-recreate schtick-kramer schtick-larry-david
+```
 
 **This is the setup actually in use**: a parent directory holds this repo
 (`Larry-David-Bot/`) and an unrelated `adguardhome` service in one combined

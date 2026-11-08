@@ -37,6 +37,7 @@ from dotenv import load_dotenv
 
 from schtick import providers
 from schtick.persona import load_persona, available_personas, characters_dir
+from schtick.settings import TWITTER_ENV
 
 logger = logging.getLogger(__name__)
 
@@ -860,8 +861,9 @@ BLUESKY_APP_PASSWORD={app_password}
 # API key for quote generation ({provider})
 {api_key_env}={api_key}
 
-# Optional X/Twitter credentials — not set up by the wizard.
-# See env.example if you also want to post to X/Twitter.
+# Optional X/Twitter cross-posting (paid X API credits required).
+X_ENABLED={x_enabled}
+{x_credentials}
 """
 
 
@@ -957,6 +959,16 @@ def _run_wizard():
     print(f"  {provider.name} key — get one at {provider.signup_url}.")
     api_key = getpass.getpass(f"{provider.api_key_env} (hidden):  ").strip()
 
+    print("\nOptional: cross-post to X/Twitter. The X API requires paid credits.")
+    print("Bluesky works on its own. You can enable X later in the env file.")
+    enable_x = input("Enable X/Twitter cross-posting? [y/N]  ").strip().lower() in {"y", "yes"}
+    x_credentials = ""
+    if enable_x:
+        print("  Get X API credentials and fund API credits at https://console.x.com/.")
+        for key in TWITTER_ENV:
+            value = getpass.getpass(f"{key} (hidden):  ").strip()
+            x_credentials += f"{key}={value or 'your-' + key.lower().replace('_', '-')}\n"
+
     env_content = ENV_TEMPLATE.format(
         name=name,
         slug=slug,
@@ -965,6 +977,8 @@ def _run_wizard():
         provider=provider.name,
         api_key_env=provider.api_key_env,
         api_key=api_key or f"your-{provider.name}-api-key",
+        x_enabled="true" if enable_x else "false",
+        x_credentials=x_credentials,
     )
     env_path = f".env.{slug}"
     with open(env_path, "w", encoding="utf-8") as f:
@@ -986,8 +1000,11 @@ def _run_wizard():
     print("Running on Docker? Add this service to docker-compose.yml")
     print("(and create ./data/{}):\n".format(slug))
     print(_compose_service_block(slug))
-    print("Want to post to X/Twitter too? See env.example for the optional keys,")
-    print(f"then add them to {env_path}.")
+    if enable_x:
+        print("X/Twitter is enabled. Fill any credential placeholders and fund X API credits before running.")
+    else:
+        print("X/Twitter is off. To opt in later, set X_ENABLED=true and add the")
+        print(f"TWITTER_* credentials from env.example to {env_path}; paid X API credits are required.")
 
 
 # --------------------------------------------------------------------------- #

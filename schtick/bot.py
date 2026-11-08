@@ -25,6 +25,7 @@ except ImportError:  # Older atproto version without RichText helper
     RichText = None
 
 from schtick import generation
+from schtick.settings import TWITTER_ENV, x_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -142,29 +143,32 @@ class PersonaBot:
         self.provider = generation.configure(persona)
         logger.info(f"Generating with {self.provider.name} ({persona.MODEL or self.provider.default_model})")
 
+        # Validate the optional X configuration before making a login request.
+        self._configure_twitter()
+
         # Login to Bluesky
         self.client.login(self.handle, self.app_password)
         logger.info(f"Logged in to Bluesky as {self.handle}")
 
-        # Twitter API v2 Client
+    def _configure_twitter(self):
+        """Only initialize X when explicitly enabled, regardless of saved keys."""
         self.twitter_client = None
-        twitter_bearer_token = os.getenv('TWITTER_BEARER_TOKEN')
+        if not x_enabled(os.environ):
+            logger.info("X/Twitter posting disabled (X_ENABLED=false).")
+            return
 
-        if twitter_bearer_token:
-            try:
-                self.twitter_client = tweepy.Client(
-                    bearer_token=twitter_bearer_token,
-                    consumer_key=os.getenv('TWITTER_API_KEY'),
-                    consumer_secret=os.getenv('TWITTER_API_SECRET'),
-                    access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
-                    access_token_secret=os.getenv('TWITTER_ACCESS_SECRET')
-                )
-                logger.info("Initialized Twitter API v2 client")
-            except Exception as e:
-                logger.error(f"Error initializing Twitter client: {e}")
-                self.twitter_client = None
-        else:
-            logger.warning("Twitter Bearer Token not found. Twitter posting disabled.")
+        missing = [key for key in TWITTER_ENV if not os.getenv(key, "").strip()]
+        if missing:
+            raise ValueError("X_ENABLED=true requires: " + ", ".join(missing))
+
+        self.twitter_client = tweepy.Client(
+            bearer_token=os.getenv('TWITTER_BEARER_TOKEN'),
+            consumer_key=os.getenv('TWITTER_API_KEY'),
+            consumer_secret=os.getenv('TWITTER_API_SECRET'),
+            access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
+            access_token_secret=os.getenv('TWITTER_ACCESS_SECRET')
+        )
+        logger.info("X/Twitter posting enabled; X API credits required.")
 
     def load_recent_posts(self) -> List[str]:
         """Load recent posts from cache file to avoid duplicates.
@@ -289,6 +293,9 @@ class PersonaBot:
                                "Please check your Twitter API keys and access tokens.")
                 elif status_code == 429:
                     logger.error("Twitter API Error: Rate limit exceeded. The bot will try again later.")
+                elif status_code == 402:
+                    logger.error("X/Twitter API Error (402): payment required. Check X API "
+                                 "credits and billing, or set X_ENABLED=false to disable cross-posting.")
                 else:
                     logger.error(f"Twitter API Error ({status_code}): {error_msg}")
             else:

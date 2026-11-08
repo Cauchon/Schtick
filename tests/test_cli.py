@@ -210,7 +210,7 @@ def test_choose_provider_lists_every_option(monkeypatch, capsys):
 def test_wizard_scaffolds_openai_character_and_credentials(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SCHTICK_CHARACTERS_DIR", str(tmp_path / "characters"))
-    answers = iter(["Aunt Carol", "4", "carol.example.com"])
+    answers = iter(["Aunt Carol", "4", "carol.example.com", ""])
     secrets = iter(["offline-app-password", "sk-offline-secret"])
     monkeypatch.setattr(builtins, "input", lambda _prompt="": next(answers))
     monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt="": next(secrets))
@@ -222,7 +222,29 @@ def test_wizard_scaffolds_openai_character_and_credentials(tmp_path, monkeypatch
     assert "provider: openai\n" in character
     assert "OPENAI_API_KEY=sk-offline-secret\n" in credentials
     assert "GEMINI_API_KEY" not in credentials
+    assert "X_ENABLED=false\n" in credentials
+    assert "TWITTER_ACCESS_TOKEN=" not in credentials
     assert "sk-offline-secret" not in capsys.readouterr().out
+
+
+def test_wizard_can_opt_in_to_x_without_echoing_credentials(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SCHTICK_CHARACTERS_DIR", str(tmp_path / "characters"))
+    answers = iter(["Aunt Carol", "4", "carol.example.com", "yes"])
+    secrets = iter(["offline-app-password", "sk-offline-secret"] +
+                   [f"offline-secret-{key}" for key in cli.TWITTER_ENV])
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": next(answers))
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt="": next(secrets))
+
+    cli._run_wizard()
+
+    credentials = (tmp_path / ".env.aunt_carol").read_text()
+    assert "X_ENABLED=true\n" in credentials
+    for key in cli.TWITTER_ENV:
+        assert f"{key}=offline-secret-{key}\n" in credentials
+    out = capsys.readouterr().out
+    assert "paid credits" in out
+    assert "offline-secret" not in out
 
 
 # --- main() dispatch -------------------------------------------------------

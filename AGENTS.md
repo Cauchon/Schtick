@@ -15,6 +15,11 @@ behavior, it belongs in its character file as data the engine already reads.
 - `schtick/__main__.py` — CLI. `python -m schtick <slug>` still works this
   way (it's the Docker contract — see Deployment) — or the `PERSONA` env var.
   Loads `.env.<slug>` if present, else `.env`.
+- `schtick/settings.py` — shared environment settings. X cross-posting requires
+  explicit `X_ENABLED=true` plus all five `TWITTER_*` credentials and paid X API
+  credits. Absent/false means off, even with saved credentials. The `new` wizard
+  offers X as a default-off opt-in; `doctor` checks the setting offline. Kramer
+  and Larry David run with `X_ENABLED=false` in their per-persona env files.
 - `schtick/persona.py` — loads a `Persona` from `characters/<slug>.md`: no
   registry, it scans the directory for `*.md` files. Resolves the characters
   directory relative to the package location, not cwd — overridable via

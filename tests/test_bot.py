@@ -14,6 +14,7 @@ import pytest
 import schedule
 
 from schtick import bot as bot_module
+from schtick.settings import TWITTER_ENV
 from schtick.bot import (
     BLUESKY_CHAR_LIMIT,
     TWITTER_CHAR_LIMIT,
@@ -191,6 +192,66 @@ def test_candidates_stop_at_the_first_generation_error(tmp_path):
     bot.generate_quote = flaky
     assert list(bot._candidates(10)) == []
     assert len(calls) == 1
+
+
+# --- X opt-in -------------------------------------------------------------
+
+@pytest.mark.parametrize("setting", [None, "false", "0", "NO", " off ", ""])
+def test_x_off_never_constructs_a_client_even_with_saved_credentials(
+    tmp_path, monkeypatch, caplog, setting
+):
+    for key in TWITTER_ENV:
+        monkeypatch.setenv(key, "offline-secret")
+    if setting is None:
+        monkeypatch.delenv("X_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("X_ENABLED", setting)
+    monkeypatch.setattr(bot_module.tweepy, "Client", lambda **_: pytest.fail("X is off"))
+    bot = make_bot(tmp_path)
+
+    with caplog.at_level(logging.INFO):
+        bot._configure_twitter()
+
+    assert bot.twitter_client is None
+    assert bot.post_to_twitter("a fresh line") is False
+    assert "X/Twitter posting disabled" in caplog.text
+
+
+@pytest.mark.parametrize("setting", ["true", "1", "YES", " on "])
+def test_x_opt_in_configures_a_client_without_posting(tmp_path, monkeypatch, setting):
+    monkeypatch.setenv("X_ENABLED", setting)
+    for key in TWITTER_ENV:
+        monkeypatch.setenv(key, "offline-secret")
+    calls = []
+    client = object()
+    monkeypatch.setattr(bot_module.tweepy, "Client", lambda **kw: calls.append(kw) or client)
+    bot = make_bot(tmp_path)
+
+    bot._configure_twitter()
+
+    assert bot.twitter_client is client
+    assert set(calls[0]) == {"bearer_token", "consumer_key", "consumer_secret", "access_token", "access_token_secret"}
+
+
+def test_x_opt_in_requires_complete_credentials(tmp_path, monkeypatch):
+    monkeypatch.setenv("X_ENABLED", "true")
+    for key in TWITTER_ENV:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("TWITTER_BEARER_TOKEN", "offline-secret")
+    monkeypatch.setattr(bot_module.tweepy, "Client", lambda **_: pytest.fail("credentials incomplete"))
+    bot = make_bot(tmp_path)
+
+    with pytest.raises(ValueError, match="X_ENABLED=true requires: TWITTER_API_KEY"):
+        bot._configure_twitter()
+    assert bot.twitter_client is None
+
+
+def test_invalid_x_setting_cannot_enable_cross_posting(tmp_path, monkeypatch):
+    monkeypatch.setenv("X_ENABLED", "maybe")
+    bot = make_bot(tmp_path)
+    with pytest.raises(ValueError, match="X_ENABLED must be true or false"):
+        bot._configure_twitter()
+    assert bot.twitter_client is None
 
 
 # --- Twitter length guard --------------------------------------------------
