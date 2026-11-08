@@ -138,7 +138,7 @@ def test_persona_dispatch_reads_openai_key_and_strips_wrapping_quotes(
     assert generation.configure(selected) is provider
     assert sdk.client_options["api_key"] == "sk-offline-persona"
     assert generation.generate_quote(selected, []) == "A fresh line."
-    assert sdk.calls[0]["model"] == "gpt-6-luna"
+    assert sdk.calls[0]["model"] == provider.default_model
 
 
 def test_missing_openai_key_is_reported(monkeypatch, provider):
