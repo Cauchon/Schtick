@@ -77,9 +77,7 @@ def test_research_is_one_bounded_responses_request():
     ("output_usd_per_million", 100), ("output_usd_per_million", float("nan")),
     ("current_model", "stale"),
     ("sources", ["https://evil.example/models"]),
-    ("sources", ["https://developers.openai.com/not-actually-retrieved"]),
     ("sources", ["https://developers.openai.com.evil.example/models"]),
-    ("sources", []),
 ])
 def test_invalid_or_unsupported_updates_are_rejected(field, value):
     proposal = report(update=True)
@@ -103,6 +101,25 @@ def test_equivalent_citation_urls_match_actual_search_sources():
     proposal = report(update=True)
     proposal["assessments"][-1]["sources"] = [URLS["openai"] + "/?hl=en#pricing"]
     assert review.validate_report(proposal, CURRENT, set(URLS.values())) is proposal
+
+
+@pytest.mark.parametrize("sources", [[],
+    ["https://developers.openai.com/not-actually-retrieved"],
+    [URLS["openai"], "https://developers.openai.com/not-actually-retrieved"],
+])
+def test_unretrieved_evidence_produces_attention_and_never_a_model_update(sources):
+    proposal = report(update=True)
+    item = proposal["assessments"][-1]
+    item["sources"] = sources
+    review.validate_report(proposal, CURRENT, set(URLS.values()))
+    assert item["decision"] == "attention"
+    assert item["recommended_model"] == CURRENT["openai"]
+    assert item["sources"] == [url for url in sources if url in URLS.values()]
+    assert "verify this assessment manually" in item["reason"]
+    assert review.planned_files(review.ROOT, proposal) == {}
+    client = FakeClient()
+    assert review.compare_openai(client, proposal, [character()]) == []
+    assert client.calls == []
 
 
 @pytest.mark.parametrize("status", ["incomplete", "failed", "in_progress"])
