@@ -20,6 +20,7 @@ def workspace(tmp_path, monkeypatch):
         "GEMINI_API_KEY",
         "ANTHROPIC_API_KEY",
         "DEEPSEEK_API_KEY",
+        "OPENAI_API_KEY",
     ):
         monkeypatch.delenv(key, raising=False)
     return characters, data
@@ -66,6 +67,32 @@ def test_valid_character_passes_offline_doctor(workspace, monkeypatch, capsys):
     assert "PASS  credentials" in out
     assert "PASS  storage" in out
     assert "Offline checks only" in out
+
+
+@pytest.mark.parametrize("has_key", [True, False])
+def test_openai_doctor_checks_its_key_offline(workspace, monkeypatch, capsys, has_key):
+    characters, data = workspace
+    write_character(characters, extra="provider: openai\n")
+    write_env(data.parent)
+    if has_key:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-offline-secret")
+    monkeypatch.setattr(
+        diagnostics.providers.get_provider("openai"), "configure",
+        lambda *_args: pytest.fail("offline doctor must not configure OpenAI"),
+    )
+    if has_key:
+        run_doctor(monkeypatch, "aunt_carol", "--data-dir", str(data))
+    else:
+        with pytest.raises(SystemExit) as exc:
+            run_doctor(monkeypatch, "aunt_carol", "--data-dir", str(data))
+        assert exc.value.code == 1
+    out = capsys.readouterr().out
+    assert "openai (gpt-6-luna)" in out
+    assert "sk-offline-secret" not in out
+    if has_key:
+        assert "Doctor passed" in out
+    else:
+        assert "OPENAI_API_KEY" in out
 
 
 def test_default_doctor_never_calls_external_services(workspace, monkeypatch):

@@ -180,6 +180,7 @@ def test_load_env_does_not_pick_up_another_personas_file(
         ("1", "gemini"),
         ("2", "anthropic"),
         ("3", "deepseek"),
+        ("4", "openai"),
         ("x", "gemini"),     # anything unrecognised falls back to the default
         ("42", "gemini"),
         ("  2  ", "anthropic"),  # the answer is stripped
@@ -203,6 +204,25 @@ def test_choose_provider_lists_every_option(monkeypatch, capsys):
     assert "Gemini" in printed
     assert "Claude" in printed
     assert "DeepSeek" in printed
+    assert "OpenAI" in printed
+
+
+def test_wizard_scaffolds_openai_character_and_credentials(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SCHTICK_CHARACTERS_DIR", str(tmp_path / "characters"))
+    answers = iter(["Aunt Carol", "4", "carol.example.com"])
+    secrets = iter(["offline-app-password", "sk-offline-secret"])
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": next(answers))
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt="": next(secrets))
+
+    cli._run_wizard()
+
+    character = (tmp_path / "characters" / "aunt_carol.md").read_text()
+    credentials = (tmp_path / ".env.aunt_carol").read_text()
+    assert "provider: openai\n" in character
+    assert "OPENAI_API_KEY=sk-offline-secret\n" in credentials
+    assert "GEMINI_API_KEY" not in credentials
+    assert "sk-offline-secret" not in capsys.readouterr().out
 
 
 # --- main() dispatch -------------------------------------------------------

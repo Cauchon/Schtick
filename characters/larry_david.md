@@ -1,5 +1,6 @@
 ---
 name: Larry David
+provider: openai
 char_target: 240
 post_interval_minutes: 214
 fallbacks:
