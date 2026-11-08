@@ -175,6 +175,15 @@ the Compose health checks.
 
 ## Deployment
 
+The weekly maintenance workflow (`.github/workflows/model-review.yml`) is a
+separate, explicitly authorized paid-generation path: one bounded GPT-6
+Responses research call and up to four unpublished OpenAI comparison calls
+when a default upgrade is proposed. `tools/review_models.py` never posts,
+imports `bot.py`, changes character prompts or deploys. Normal offline tests
+stub all API calls. See `docs/model-review.md` for the model/pricing policy,
+file allowlist, credential setup and draft-PR approval boundary. Do not widen
+its scope or add paid generation calls to routine CI.
+
 Docker Compose on a Raspberry Pi — a combined stack in a parent directory
 alongside an unrelated AdGuard service. Not Render (`render.yaml` was deleted
 as dead config). Services are `schtick-larry-david` and `schtick-kramer`,
