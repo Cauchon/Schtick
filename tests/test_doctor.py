@@ -87,7 +87,7 @@ def test_openai_doctor_checks_its_key_offline(workspace, monkeypatch, capsys, ha
             run_doctor(monkeypatch, "aunt_carol", "--data-dir", str(data))
         assert exc.value.code == 1
     out = capsys.readouterr().out
-    assert "openai (gpt-6-luna)" in out
+    assert f"openai ({diagnostics.providers.get_provider('openai').default_model})" in out
     assert "sk-offline-secret" not in out
     if has_key:
         assert "Doctor passed" in out

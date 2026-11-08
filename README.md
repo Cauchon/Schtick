@@ -214,6 +214,15 @@ but occasionally runs long. The engine rejects anything over Bluesky's
 and a small cap is worse than the overrun, because it truncates mid-sentence
 into a short, broken line that passes the length check.
 
+## Keeping models current
+
+The [weekly model review](docs/model-review.md) uses GPT-6 through the Responses
+API to research stable, economical model updates and open draft PRs with
+official sources and unpublished OpenAI comparisons. It runs on Mondays,
+skips duplicate work while a proposal awaits review, and never merges or
+deploys changes. API usage uses the existing organization’s eligible credits
+and billing. See the guide for request limits, setup and manual runs.
+
 ## Running your cast
 
 One checkout can run several characters side by side. The wizard already gave
