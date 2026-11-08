@@ -119,7 +119,7 @@ def gemini(fake_genai):
 def test_gemini_declares_its_key_env_and_default_model():
     gemini_singleton = providers.get_provider("gemini")
     assert gemini_singleton.api_key_env == "GEMINI_API_KEY"
-    assert gemini_singleton.default_model == "gemini-3.6-flash"
+    assert gemini_singleton.default_model == "gemini-3.8-flash"
     assert providers.DEFAULT_PROVIDER == "gemini"
 
 
@@ -131,7 +131,7 @@ def test_gemini_configure_builds_a_per_instance_client_with_the_key(gemini, fake
 
 def test_gemini_generate_before_configure_raises(fake_genai):
     with pytest.raises(RuntimeError, match="before configure"):
-        GeminiProvider().generate("prompt", "gemini-3.6-flash", {})
+        GeminiProvider().generate("prompt", "gemini-3.8-flash", {})
 
 
 @pytest.mark.parametrize("empty_config", [{}, None])
@@ -141,10 +141,10 @@ def test_gemini_passes_no_config_kwarg_at_all_when_the_config_is_falsy(
     # Kramer's frontmatter deliberately omits `generation`; absent must mean NO
     # config kwarg, not an empty GenerateContentConfig — see CLAUDE.md.
     gemini.configure("k")
-    gemini.generate("say something", "gemini-3.6-flash", empty_config)
+    gemini.generate("say something", "gemini-3.8-flash", empty_config)
 
     assert fake_genai.last.create_kwargs == {
-        "model": "gemini-3.6-flash",
+        "model": "gemini-3.8-flash",
         "contents": "say something",
     }
     assert "config" not in fake_genai.last.create_kwargs
@@ -152,10 +152,10 @@ def test_gemini_passes_no_config_kwarg_at_all_when_the_config_is_falsy(
 
 def test_gemini_wraps_a_populated_config_in_a_generate_content_config(gemini, fake_genai):
     gemini.configure("k")
-    gemini.generate("say something", "gemini-3.6-flash", {"temperature": 1.1})
+    gemini.generate("say something", "gemini-3.8-flash", {"temperature": 1.1})
 
     kwargs = fake_genai.last.create_kwargs
-    assert kwargs["model"] == "gemini-3.6-flash"
+    assert kwargs["model"] == "gemini-3.8-flash"
     assert kwargs["contents"] == "say something"
     assert isinstance(kwargs["config"], FakeGenerateContentConfig)
     assert kwargs["config"].kwargs == {"temperature": 1.1}
@@ -165,7 +165,7 @@ def test_gemini_returns_the_response_text(gemini, fake_genai):
     fake_genai.next_text = "I'll tell you what the problem is."
     gemini.configure("k")
 
-    assert gemini.generate("p", "gemini-3.6-flash", {}) == (
+    assert gemini.generate("p", "gemini-3.8-flash", {}) == (
         "I'll tell you what the problem is."
     )
 
@@ -218,7 +218,7 @@ def test_gemini_empty_or_none_text_raises(gemini, fake_genai, text):
     gemini.configure("k")
 
     with pytest.raises(RuntimeError, match="no text"):
-        gemini.generate("p", "gemini-3.6-flash", {})
+        gemini.generate("p", "gemini-3.8-flash", {})
 
 
 # --------------------------------------------------------------------------- #
@@ -280,7 +280,7 @@ def claude(fake_anthropic):
 def test_anthropic_declares_its_key_env_and_default_model():
     claude_singleton = providers.get_provider("anthropic")
     assert claude_singleton.api_key_env == "ANTHROPIC_API_KEY"
-    assert claude_singleton.default_model == "claude-sonnet-5"
+    assert claude_singleton.default_model == "claude-haiku-5-5"
 
 
 def test_anthropic_configure_builds_the_client_with_the_key(claude, fake_anthropic):
@@ -291,17 +291,17 @@ def test_anthropic_configure_builds_the_client_with_the_key(claude, fake_anthrop
 
 def test_anthropic_generate_before_configure_raises(fake_anthropic):
     with pytest.raises(RuntimeError, match="before configure"):
-        AnthropicProvider().generate("prompt", "claude-sonnet-5", {})
+        AnthropicProvider().generate("prompt", "claude-haiku-5-5", {})
 
 
 def test_anthropic_defaults_max_tokens_to_4096(claude, fake_anthropic):
     # Thinking shares the max_tokens ceiling with the visible answer, so a
     # quote-sized budget would truncate the reply — see CLAUDE.md.
     claude.configure("k")
-    claude.generate("say something", "claude-sonnet-5", {})
+    claude.generate("say something", "claude-haiku-5-5", {})
 
     assert fake_anthropic.last.create_kwargs == {
-        "model": "claude-sonnet-5",
+        "model": "claude-haiku-5-5",
         "messages": [{"role": "user", "content": "say something"}],
         "max_tokens": AnthropicProvider.DEFAULT_MAX_TOKENS,
     }
@@ -314,12 +314,12 @@ def test_anthropic_generation_config_merges_in_and_can_override_max_tokens(
     claude.configure("k")
     claude.generate(
         "say something",
-        "claude-sonnet-5",
+        "claude-haiku-5-5",
         {"max_tokens": 1024, "system": "be brief"},
     )
 
     assert fake_anthropic.last.create_kwargs == {
-        "model": "claude-sonnet-5",
+        "model": "claude-haiku-5-5",
         "messages": [{"role": "user", "content": "say something"}],
         "max_tokens": 1024,
         "system": "be brief",
@@ -329,7 +329,7 @@ def test_anthropic_generation_config_merges_in_and_can_override_max_tokens(
 def test_anthropic_does_not_mutate_the_characters_generation_config(claude, fake_anthropic):
     config = {"system": "be brief"}
     claude.configure("k")
-    claude.generate("say something", "claude-sonnet-5", config)
+    claude.generate("say something", "claude-haiku-5-5", config)
 
     assert config == {"system": "be brief"}
 
@@ -340,7 +340,7 @@ def test_anthropic_returns_the_text_block(claude, fake_anthropic):
     )
     claude.configure("k")
 
-    assert claude.generate("p", "claude-sonnet-5", {}) == (
+    assert claude.generate("p", "claude-haiku-5-5", {}) == (
         "I'll tell you what the problem is."
     )
 
@@ -354,7 +354,7 @@ def test_anthropic_ignores_thinking_blocks_and_concatenates_only_text(claude, fa
     ])
     claude.configure("k")
 
-    assert claude.generate("p", "claude-sonnet-5", {}) == "the visible answer"
+    assert claude.generate("p", "claude-haiku-5-5", {}) == "the visible answer"
 
 
 def test_anthropic_refusal_stop_reason_raises(claude, fake_anthropic):
@@ -364,7 +364,7 @@ def test_anthropic_refusal_stop_reason_raises(claude, fake_anthropic):
     claude.configure("k")
 
     with pytest.raises(RuntimeError, match="refusal"):
-        claude.generate("p", "claude-sonnet-5", {})
+        claude.generate("p", "claude-haiku-5-5", {})
 
 
 @pytest.mark.parametrize(
@@ -382,7 +382,7 @@ def test_anthropic_empty_text_raises(claude, fake_anthropic, blocks):
     claude.configure("k")
 
     with pytest.raises(RuntimeError, match="no text"):
-        claude.generate("p", "claude-sonnet-5", {})
+        claude.generate("p", "claude-haiku-5-5", {})
 
 
 def test_anthropic_empty_text_error_points_at_max_tokens(claude, fake_anthropic):
@@ -390,6 +390,6 @@ def test_anthropic_empty_text_error_points_at_max_tokens(claude, fake_anthropic)
     claude.configure("k")
 
     with pytest.raises(RuntimeError) as exc:
-        claude.generate("p", "claude-sonnet-5", {})
+        claude.generate("p", "claude-haiku-5-5", {})
 
     assert "max_tokens" in str(exc.value)

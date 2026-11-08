@@ -75,8 +75,9 @@ the Compose health checks.
   `gemini-3.6-flash`/`gemini-3.7-flash` worked. The provider default is a
   pinned stable model; bump it deliberately — and not to the newest one
   reflexively: on 2026-08-22 a 5-call A/B got 5/5 on `gemini-3.6-flash` and
-  3/5 on the month-old `gemini-3.7-flash`, so the default is 3.6 until 3.7's
-  capacity settles. Diagnose a silent bot with
+  3/5 on the month-old `gemini-3.7-flash`. The November 2026 review advances
+  the default to Google's stable replacement `gemini-3.8-flash`; availability
+  and voice quality have not been re-tested live. Diagnose a silent bot with
   `python -m schtick status` (OVERDUE) and the log's
   `No postable quote and no unused fallback left` line — with every fallback
   already in the dedup cache, a provider outage is silence, not repeats.
@@ -101,8 +102,13 @@ the Compose health checks.
   package: the provider is `openai.OpenAI(base_url="https://api.deepseek.com")`
   against the Chat Completions API, which is why `openai` is a dependency
   despite nothing here using OpenAI models. Unlike Anthropic it needs no
-  `max_tokens` floor — `deepseek-reasoner` returns its reasoning in a separate
+  `max_tokens` floor — thinking mode returns its reasoning in a separate
   `reasoning_content` field, so `.content` is already the postable answer.
+  The current default is `deepseek-flash` (V4.1 Flash 1017 at the November
+  2026 review); the old `deepseek-chat`/`deepseek-reasoner` names are legacy.
+  Thinking is now enabled at high effort by the service, so the provider
+  defaults `extra_body.thinking.type` to `disabled`; characters can override
+  it through their provider-native `generation` mapping.
 - **Character prompt bodies were ported byte-identical** from the two
   original bots into `characters/*.md`. Treat any edit to a character body as
   a voice change the user should sign off on, not a cleanup.

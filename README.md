@@ -139,16 +139,43 @@ character and a Claude character side by side.
 
 | `provider`  | Default model       | API key env var     | Get a key |
 |-------------|---------------------|---------------------|-----------|
-| `gemini`    | `gemini-3.6-flash` | `GEMINI_API_KEY`    | [aistudio.google.com](https://aistudio.google.com) |
-| `anthropic` | `claude-sonnet-5`   | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
-| `deepseek`  | `deepseek-chat`     | `DEEPSEEK_API_KEY`  | [platform.deepseek.com](https://platform.deepseek.com) |
+| `gemini`    | `gemini-3.8-flash` | `GEMINI_API_KEY`    | [aistudio.google.com](https://aistudio.google.com) |
+| `anthropic` | `claude-haiku-5-5` | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+| `deepseek`  | `deepseek-flash`   | `DEEPSEEK_API_KEY`  | [platform.deepseek.com](https://platform.deepseek.com) |
+
+Defaults reviewed November 7, 2026 for one short character post every few hours:
+
+- **Gemini:** keep the Flash tier for writing quality and use Google's stable
+  [3.8 replacement for 3.6](https://firebase.google.com/docs/ai-logic/models).
+  Flash-Lite is a cheaper candidate, but needs a character-voice comparison
+  before replacing Flash. Avoid the hot-swapped `-latest` alias.
+- **Claude:** start with the current small model,
+  [Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview).
+  Sonnet 5.5 remains available as a per-character override if its humor and
+  voice justify the extra cost. This sizing choice has not been voice-tested.
+- **DeepSeek:** use the current documented
+  [`deepseek-flash` API name](https://api-docs.deepseek.com/), served by
+  V4.1 Flash 1017 at review time. The provider disables thinking by default;
+  the service otherwise defaults to high-effort thinking, unnecessary for
+  this workload. This service name can move to newer releases.
+
+These are documentation-based choices verified with offline tests, not live
+availability or humor evaluations. Changing defaults takes effect when a bot
+using them is restarted with the updated code/image.
+
+**OpenAI models are not supported yet.** The installed `openai` SDK is used
+only for DeepSeek's compatible endpoint. If adding OpenAI, start by evaluating
+[`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna) through
+the Responses API with low reasoning effort: it is the current economical
+model for focused work. A dedicated provider and `OPENAI_API_KEY` handling
+would still need to be implemented.
 
 To run a character on Claude, add two lines to its frontmatter and put the key in
 its `.env.<slug>`:
 
 ```yaml
 provider: anthropic
-model: claude-opus-5    # optional — omit for claude-sonnet-5
+model: claude-sonnet-5-5    # optional — omit for claude-haiku-5-5
 ```
 
 `generation` is passed straight through to that provider's API call, so its keys
@@ -158,6 +185,11 @@ are provider-specific: `thinking_level: low` for Gemini 3, `max_tokens: 2048` or
 **reject** `temperature`, `top_p`, and `top_k`, and Gemini 3.x models deprecate
 them — steer the voice in the prompt instead. If you switch a character's
 provider, check its `generation` block still applies.
+
+To opt a DeepSeek character into thinking, use
+`generation: {extra_body: {thinking: {type: enabled}}, reasoning_effort: low}`.
+See DeepSeek's [thinking-mode parameter rules](https://api-docs.deepseek.com/guides/thinking_mode/):
+some sampling options are ignored depending on the model and thinking mode.
 
 One DeepSeek note: it honors the "under N characters" rule most of the time
 but occasionally runs long. The engine rejects anything over Bluesky's

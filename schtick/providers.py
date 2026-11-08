@@ -39,7 +39,9 @@ class GeminiProvider:
     # experimental — and in August 2026 it resolved to something that returned
     # 503 for over a day while the stable models answered fine. Bump this on
     # purpose; characters can still pin their own with `model:`.
-    default_model = "gemini-3.6-flash"
+    # Reviewed November 2026: 3.8 is the stable replacement for 3.6. Keep the
+    # Flash tier for voice quality; Flash-Lite is a candidate for a voice eval.
+    default_model = "gemini-3.8-flash"
     signup_url = "aistudio.google.com"
 
     def __init__(self):
@@ -98,9 +100,9 @@ class AnthropicProvider:
 
     name = "anthropic"
     api_key_env = "ANTHROPIC_API_KEY"
-    # Sonnet, not Opus: a character posts a one-liner every few hours, which is
-    # not worth Opus pricing. Characters that want it set `model:` explicitly.
-    default_model = "claude-sonnet-5"
+    # Start with the current small model for short character posts. Characters
+    # that benefit from Sonnet's writing quality can select it with `model:`.
+    default_model = "claude-haiku-5-5"
     signup_url = "console.anthropic.com"
 
     # Thinking is on by default on current Claude models and shares the
@@ -161,7 +163,7 @@ class DeepSeekProvider:
     ``https://api.deepseek.com``, so the official ``openai`` package talks to it
     with nothing but a different ``base_url``.
 
-    ``deepseek-reasoner`` puts its chain of thought in a separate
+    Thinking mode puts its chain of thought in a separate
     ``reasoning_content`` field rather than inline in the message, so reading
     ``.content`` already gives the visible answer — no tag stripping needed, and
     no thinking budget to reserve the way Anthropic needs one.
@@ -169,9 +171,9 @@ class DeepSeekProvider:
 
     name = "deepseek"
     api_key_env = "DEEPSEEK_API_KEY"
-    # The chat model, not deepseek-reasoner: a one-liner in a fixed voice does
-    # not need a reasoning pass. Characters that want it set `model:` explicitly.
-    default_model = "deepseek-chat"
+    # Current Flash API name (V4.1 Flash 1017 at the November 2026 review).
+    # A one-liner does not need the Pro model or a high-effort reasoning pass.
+    default_model = "deepseek-flash"
     signup_url = "platform.deepseek.com"
 
     BASE_URL = "https://api.deepseek.com"
@@ -193,9 +195,14 @@ class DeepSeekProvider:
 
         # generation_config is passed straight through to chat.completions.create,
         # so a character can set temperature, max_tokens, top_p, stop, etc. —
-        # the OpenAI-shaped names, which DeepSeek accepts. Falsy means send
-        # nothing extra and take the API's own defaults.
+        # the OpenAI-shaped names, which DeepSeek accepts. Current DeepSeek
+        # defaults to high-effort thinking; turn it off for short posts unless
+        # the character explicitly overrides it. Copy nested data too so the
+        # provider defaults never mutate a character's configuration.
         kwargs = dict(generation_config) if generation_config else {}
+        extra_body = dict(kwargs.get("extra_body") or {})
+        extra_body.setdefault("thinking", {"type": "disabled"})
+        kwargs["extra_body"] = extra_body
 
         response = self._client.chat.completions.create(
             model=model,

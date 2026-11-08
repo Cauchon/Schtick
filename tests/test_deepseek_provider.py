@@ -89,39 +89,66 @@ def test_configure_builds_the_client_with_the_key_and_deepseek_base_url(provider
 
 def test_generate_before_configure_raises(fake_openai):
     with pytest.raises(RuntimeError, match="before configure"):
-        DeepSeekProvider().generate("prompt", "deepseek-chat", {})
+        DeepSeekProvider().generate("prompt", "deepseek-flash", {})
 
 
 # --- generate: request shape ----------------------------------------------
 
-def test_empty_generation_config_sends_only_model_and_messages(provider, fake_openai):
+def test_empty_generation_config_disables_thinking(provider, fake_openai):
     provider.configure("sk-test")
-    provider.generate("say something", "deepseek-chat", {})
+    provider.generate("say something", "deepseek-flash", {})
 
     assert fake_openai.last.create_kwargs == {
-        "model": "deepseek-chat",
+        "model": "deepseek-flash",
         "messages": [{"role": "user", "content": "say something"}],
+        "extra_body": {"thinking": {"type": "disabled"}},
     }
 
 
 def test_generation_config_is_merged_into_the_call(provider, fake_openai):
     provider.configure("sk-test")
-    provider.generate("say something", "deepseek-reasoner", {"temperature": 1.3, "max_tokens": 200})
+    provider.generate("say something", "deepseek-v4-pro", {"temperature": 1.3, "max_tokens": 200})
 
     assert fake_openai.last.create_kwargs == {
-        "model": "deepseek-reasoner",
+        "model": "deepseek-v4-pro",
         "messages": [{"role": "user", "content": "say something"}],
         "temperature": 1.3,
         "max_tokens": 200,
+        "extra_body": {"thinking": {"type": "disabled"}},
     }
 
 
 def test_generation_config_is_not_mutated_by_generate(provider, fake_openai):
     config = {"temperature": 1.3}
     provider.configure("sk-test")
-    provider.generate("say something", "deepseek-chat", config)
+    provider.generate("say something", "deepseek-flash", config)
 
     assert config == {"temperature": 1.3}
+
+
+def test_character_can_enable_thinking(provider, fake_openai):
+    config = {
+        "reasoning_effort": "low",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+    provider.configure("sk-test")
+    provider.generate("p", "deepseek-flash", config)
+
+    assert fake_openai.last.create_kwargs["extra_body"] == config["extra_body"]
+    assert fake_openai.last.create_kwargs["reasoning_effort"] == "low"
+    assert config["extra_body"] == {"thinking": {"type": "enabled"}}
+
+
+def test_thinking_default_preserves_other_extra_body_options(provider, fake_openai):
+    config = {"extra_body": {"custom_option": True}}
+    provider.configure("sk-test")
+    provider.generate("p", "deepseek-flash", config)
+
+    assert fake_openai.last.create_kwargs["extra_body"] == {
+        "custom_option": True,
+        "thinking": {"type": "disabled"},
+    }
+    assert config == {"extra_body": {"custom_option": True}}
 
 
 # --- generate: response handling ------------------------------------------
@@ -130,7 +157,7 @@ def test_generate_returns_the_message_content(provider, fake_openai):
     fake_openai.next_response = FakeResponse("I'll tell you what the problem is.")
     provider.configure("sk-test")
 
-    assert provider.generate("p", "deepseek-chat", {}) == "I'll tell you what the problem is."
+    assert provider.generate("p", "deepseek-flash", {}) == "I'll tell you what the problem is."
 
 
 @pytest.mark.parametrize("content", [None, "", "   "])
@@ -139,7 +166,7 @@ def test_empty_content_raises(provider, fake_openai, content):
     provider.configure("sk-test")
 
     with pytest.raises(RuntimeError, match="no text"):
-        provider.generate("p", "deepseek-chat", {})
+        provider.generate("p", "deepseek-flash", {})
 
 
 def test_content_filter_finish_reason_raises(provider, fake_openai):
@@ -147,7 +174,7 @@ def test_content_filter_finish_reason_raises(provider, fake_openai):
     provider.configure("sk-test")
 
     with pytest.raises(RuntimeError, match="content_filter"):
-        provider.generate("p", "deepseek-chat", {})
+        provider.generate("p", "deepseek-flash", {})
 
 
 # --- registration ----------------------------------------------------------
@@ -160,7 +187,7 @@ def test_deepseek_is_registered():
 def test_deepseek_declares_its_key_env_and_default_model():
     deepseek = providers.get_provider("deepseek")
     assert deepseek.api_key_env == "DEEPSEEK_API_KEY"
-    assert deepseek.default_model == "deepseek-chat"
+    assert deepseek.default_model == "deepseek-flash"
     assert deepseek.signup_url == "platform.deepseek.com"
 
 
