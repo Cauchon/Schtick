@@ -23,7 +23,7 @@ classifiers = [
 dependencies = [
     "atproto>=0.0.71,<0.1",
     "google-genai>=2.19,<3",
-    "anthropic>=1.0,<2",
+    "anthropic>=1.0,<3",
     # OpenAI Responses API, plus DeepSeek's compatible Chat Completions API.
     "openai>=3.3,<4",
     "python-dotenv>=1.0,<2",
