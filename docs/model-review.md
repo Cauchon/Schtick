@@ -17,8 +17,9 @@ settings.
 1. If an open `codex/model-update-*` PR already awaits review, skip the paid
    work. Review or close that PR to resume weekly research.
 2. Research the current defaults for all four providers using the Responses
-   web-search tool, restricted to official provider documentation. Require a
-   retrieved official source for every assessment. Return structured data,
+   web-search tool, restricted to official provider documentation. Require
+   retrieved official evidence for every default change; missing evidence
+   becomes an attention report. Return structured data,
    never generated code or shell commands.
 3. Validate candidate model IDs, stable release status, API compatibility and
    documented short-context on-demand prices. Allow only OpenAI Luna/mini,
@@ -57,8 +58,11 @@ request/token limits, **not a guaranteed dollar cap**: retrieved input tokens,
 tool charges and future pricing vary. The reviewer model is deliberately
 pinned in `tools/review_models.py` and must be maintained separately if retired.
 
-Missing secrets, bad evidence, unsupported models, API failures and failing
-tests fail the workflow rather than publishing unvalidated changes. Monitor
+Missing secrets, non-official sources, unsupported models, API failures and
+failing tests fail the workflow rather than publishing unvalidated changes.
+Missing or unretrieved official citations instead produce an attention report:
+unverified links are discarded and that provider's default cannot change.
+Monitor
 GitHub Actions failure notifications. Reports are retained as artifacts for
 30 days; model updates are never automatically merged.
 

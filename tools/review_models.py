@@ -179,13 +179,24 @@ def validate_report(report, current, urls):
             raise ValueError("Invalid review decision")
         if type(item["stable"]) is not bool or type(item["compatible"]) is not bool:
             raise ValueError("Invalid compatibility flags")
-        if not isinstance(item["sources"], list) or not item["sources"]:
-            raise ValueError(f"{provider}: assessment lacks official sources")
+        if not isinstance(item["sources"], list):
+            raise ValueError(f"{provider}: malformed source list")
+        verified = []
         for url in item["sources"]:
             if not isinstance(url, str) or not official_url(url, provider):
                 raise ValueError(f"{provider}: assessment cites a non-official source")
-            if source_identity(url) not in identities:
-                raise ValueError(f"{provider}: citation was not in retrieved evidence: {url}")
+            if source_identity(url) in identities:
+                verified.append(url)
+        if not verified or len(verified) != len(item["sources"]):
+            # Missing evidence is actionable maintenance information, not
+            # authority to update a model. Surface it in a report-only PR and
+            # discard every citation the API did not actually retrieve.
+            item["decision"] = "attention"
+            item["recommended_model"] = current[provider]
+            item["reason"] = ("Evidence validation: some official citations were not "
+                              "retrieved, or no sources were supplied. No model change "
+                              "is proposed; verify this assessment manually. " + item["reason"])
+            item["sources"] = verified
         if item["decision"] != "update":
             if item["recommended_model"] != current[provider]:
                 raise ValueError("Only update decisions may change a model")
