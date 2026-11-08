@@ -229,9 +229,60 @@ class DeepSeekProvider:
         return text
 
 
+class OpenAIProvider:
+    """OpenAI models via the ``openai`` SDK's Responses API."""
+
+    name = "openai"
+    api_key_env = "OPENAI_API_KEY"
+    default_model = "gpt-6-luna"
+    signup_url = "platform.openai.com"
+
+    def __init__(self):
+        self._client = None
+
+    def configure(self, api_key: str) -> None:
+        import openai
+
+        # generation.py owns transient retries; do not multiply them with the
+        # SDK's automatic retries. Bound each attempt for the scheduler too.
+        self._client = openai.OpenAI(api_key=api_key, max_retries=0, timeout=60.0)
+
+    def generate(self, prompt: str, model: str, generation_config: dict) -> str:
+        if self._client is None:
+            raise RuntimeError(
+                "OpenAI provider used before configure() — call "
+                "schtick.generation.configure(persona) first."
+            )
+
+        # Native Responses options, overridable per character. Avoid a small
+        # token cap: reasoning shares the output budget with the visible quote.
+        kwargs = {"reasoning": {"effort": "low"}, "store": False}
+        kwargs.update(generation_config)
+        response = self._client.responses.create(model=model, input=prompt, **kwargs)
+
+        # An incomplete response can still contain a short, truncated quote.
+        # Reject it before it reaches the bot's length check and public post.
+        if response.status != "completed":
+            reason = getattr(response.incomplete_details, "reason", None)
+            raise RuntimeError(
+                f"OpenAI response was not completed for model {model!r} "
+                f"(status={response.status!r}, reason={reason!r})."
+            )
+        for item in response.output:
+            if item.type == "message":
+                if any(block.type == "refusal" for block in item.content):
+                    raise RuntimeError(f"OpenAI declined the prompt (refusal): {model}")
+
+        # The SDK aggregates output_text blocks without reasoning or refusals.
+        text = response.output_text
+        if not text or not text.strip():
+            raise RuntimeError(f"OpenAI returned no text for model {model!r}.")
+        return text
+
+
 PROVIDERS = {
     provider.name: provider
-    for provider in (GeminiProvider(), AnthropicProvider(), DeepSeekProvider())
+    for provider in (GeminiProvider(), AnthropicProvider(), DeepSeekProvider(), OpenAIProvider())
 }
 
 DEFAULT_PROVIDER = GeminiProvider.name

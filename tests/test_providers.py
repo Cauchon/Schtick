@@ -28,7 +28,7 @@ def test_available_providers_is_sorted():
 
 
 def test_available_providers_lists_every_shipped_service():
-    assert set(providers.available_providers()) == {"anthropic", "deepseek", "gemini"}
+    assert set(providers.available_providers()) == {"anthropic", "deepseek", "gemini", "openai"}
 
 
 def test_get_provider_returns_the_singleton_registered_under_the_name():
@@ -38,10 +38,10 @@ def test_get_provider_returns_the_singleton_registered_under_the_name():
 
 def test_get_provider_error_names_the_bad_value_and_lists_the_valid_ones():
     with pytest.raises(ValueError) as exc:
-        providers.get_provider("openai")
+        providers.get_provider("unknown")
 
     message = str(exc.value)
-    assert "Unknown provider 'openai'" in message
+    assert "Unknown provider 'unknown'" in message
     for name in providers.available_providers():
         assert name in message
 

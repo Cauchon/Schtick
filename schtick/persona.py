@@ -6,7 +6,7 @@ Each character file is markdown with a YAML frontmatter block delimited by
     ---
     name: Larry David
     char_target: 240
-    provider: gemini      # optional; 'gemini' (default) or 'anthropic'
+    provider: gemini      # optional; gemini (default), anthropic, deepseek, openai
     model: ...            # optional; defaults to the provider's model
     ---
     You are Larry David ...

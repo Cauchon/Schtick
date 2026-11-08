@@ -1,5 +1,6 @@
 ---
 name: Kramer
+provider: openai
 char_target: 281
 post_interval_minutes: 214
 fallbacks:

@@ -11,7 +11,7 @@ persona-specific branching to the engine — if a character needs different
 behavior, it belongs in its character file as data the engine already reads.
 
 - `schtick/bot.py` — `PersonaBot(persona)`: Bluesky login/post, optional
-  X/Twitter post, Gemini generation, dedup retry loop, scheduler.
+  X/Twitter post, provider-based generation, dedup retry loop, scheduler.
 - `schtick/__main__.py` — CLI. `python -m schtick <slug>` still works this
   way (it's the Docker contract — see Deployment) — or the `PERSONA` env var.
   Loads `.env.<slug>` if present, else `.env`.
@@ -25,7 +25,7 @@ behavior, it belongs in its character file as data the engine already reads.
   `configure(persona)` resolves the provider's API key from the env and must
   run before `generate_quote`.
 - `schtick/providers.py` — the AI services. One class per provider
-  (`gemini`, `anthropic`, `deepseek`), registered in `PROVIDERS`; each declares its
+  (`gemini`, `anthropic`, `deepseek`, `openai`), registered in `PROVIDERS`; each declares its
   `api_key_env`, `default_model`, and `generate()`. SDK imports are lazy so a
   checkout only needs the package for the provider it uses. Adding a provider
   = a class here, nothing else.
@@ -89,7 +89,8 @@ the Compose health checks.
   strip them) — don't put it back.
 - **`generation` is provider-native passthrough, not a portable schema.** It
   goes straight into `generate_content` (Gemini), `messages.create`
-  (Anthropic) or `chat.completions.create` (DeepSeek). `temperature` works on
+  (Anthropic), `chat.completions.create` (DeepSeek), or `responses.create`
+  (OpenAI). `temperature` works on
   DeepSeek, is deprecated on Gemini 3.x, and 400s on current Claude models;
   `max_tokens` works on Anthropic and DeepSeek but not Gemini (Gemini 3 takes
   `thinking_level: low|medium|high`, default `medium`). Changing a character's
@@ -100,8 +101,8 @@ the Compose health checks.
   it can leak `<thinking>` tags into text we post verbatim.
 - **DeepSeek rides the `openai` SDK, not its own.** There is no DeepSeek
   package: the provider is `openai.OpenAI(base_url="https://api.deepseek.com")`
-  against the Chat Completions API, which is why `openai` is a dependency
-  despite nothing here using OpenAI models. Unlike Anthropic it needs no
+  against the Chat Completions API. The same package also serves the separate
+  OpenAI provider through the Responses API. Unlike Anthropic DeepSeek needs no
   `max_tokens` floor — thinking mode returns its reasoning in a separate
   `reasoning_content` field, so `.content` is already the postable answer.
   The current default is `deepseek-flash` (V4.1 Flash 1017 at the November
@@ -109,6 +110,15 @@ the Compose health checks.
   Thinking is now enabled at high effort by the service, so the provider
   defaults `extra_body.thinking.type` to `disabled`; characters can override
   it through their provider-native `generation` mapping.
+- **OpenAI uses the Responses API**, with `OPENAI_API_KEY`, default model
+  `gpt-6-luna`, low reasoning effort and `store: false`. `generation` is native
+  Responses passthrough; use `max_output_tokens`, not `max_tokens`, and leave
+  room for reasoning. The provider rejects incomplete responses even when
+  they contain short text, plus refusals and empty output. SDK retries are
+  disabled so `generation.py` alone controls retries; each attempt has a
+  60-second timeout. Both shipped personas select OpenAI and inherit these
+  defaults; new personas still default to Gemini. `.env` is only loaded
+  when `.env.<slug>` does not exist; the two files are not merged.
 - **Character prompt bodies were ported byte-identical** from the two
   original bots into `characters/*.md`. Treat any edit to a character body as
   a voice change the user should sign off on, not a cleanup.

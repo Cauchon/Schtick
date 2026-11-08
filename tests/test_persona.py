@@ -169,7 +169,7 @@ def test_empty_frontmatter_is_rejected_for_the_missing_name(characters):
 
 def test_unknown_provider_is_rejected_with_the_valid_names(characters):
     write_character(
-        characters, "wrong_provider", "---\nname: X\nprovider: openai\n---\nbody\n"
+        characters, "wrong_provider", "---\nname: X\nprovider: unknown\n---\nbody\n"
     )
 
     with pytest.raises(ValueError) as exc:
@@ -177,7 +177,7 @@ def test_unknown_provider_is_rejected_with_the_valid_names(characters):
 
     message = str(exc.value)
     assert "wrong_provider.md" in message
-    assert "Unknown provider 'openai'" in message
+    assert "Unknown provider 'unknown'" in message
     for name in providers.available_providers():
         assert name in message
 
@@ -267,8 +267,8 @@ def test_kramer_loads(real_characters):
 
     assert kramer.SLUG == "kramer"
     assert kramer.DISPLAY_NAME == "Kramer"
-    assert kramer.PROVIDER == "gemini"
-    # Kramer deliberately omits `generation` — see CLAUDE.md.
+    assert kramer.PROVIDER == "openai"
+    # Omit `generation` to use the OpenAI provider's defaults.
     assert not kramer.GENERATION_CONFIG
     assert kramer.FALLBACK_QUOTES
     assert kramer.PROMPT.startswith("You are Cosmo Kramer")
@@ -279,9 +279,8 @@ def test_larry_david_loads(real_characters):
 
     assert larry.SLUG == "larry_david"
     assert larry.DISPLAY_NAME == "Larry David"
-    assert larry.PROVIDER == "gemini"
-    # No `generation` block: Gemini 3.x deprecates temperature/top_p/top_k, so
-    # the old `temperature: 1.1` was dropped — see CLAUDE.md.
+    assert larry.PROVIDER == "openai"
+    # Omit `generation` to use the OpenAI provider's defaults.
     assert not larry.GENERATION_CONFIG
     assert larry.FALLBACK_QUOTES
     assert larry.PROMPT.startswith("You are Larry David")
