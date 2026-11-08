@@ -123,6 +123,12 @@ def official_url(url, provider):
             and any(host == domain or host.endswith("." + domain) for domain in DOMAINS[provider]))
 
 
+def source_identity(url):
+    """Ignore citation fragments, locale/tracking queries and trailing slashes."""
+    parsed = urlparse(url)
+    return (parsed.scheme, parsed.hostname, parsed.path.rstrip("/"))
+
+
 def retrieved_urls(response):
     urls = set()
     for item in response.output:
@@ -158,6 +164,7 @@ def validate_report(report, current, urls):
     if not isinstance(assessments, list) or len(assessments) != len(current):
         raise ValueError("Expected exactly one assessment for each provider")
     seen = set()
+    identities = {source_identity(url) for url in urls}
     for item in assessments:
         if set(item) != set(ASSESSMENT["properties"]):
             raise ValueError("Malformed assessment")
@@ -172,10 +179,13 @@ def validate_report(report, current, urls):
             raise ValueError("Invalid review decision")
         if type(item["stable"]) is not bool or type(item["compatible"]) is not bool:
             raise ValueError("Invalid compatibility flags")
-        if (not isinstance(item["sources"], list) or not item["sources"]
-                or any(not isinstance(url, str) or not official_url(url, provider)
-                       or url not in urls for url in item["sources"])):
-            raise ValueError("Assessment lacks retrieved official evidence")
+        if not isinstance(item["sources"], list) or not item["sources"]:
+            raise ValueError(f"{provider}: assessment lacks official sources")
+        for url in item["sources"]:
+            if not isinstance(url, str) or not official_url(url, provider):
+                raise ValueError(f"{provider}: assessment cites a non-official source")
+            if source_identity(url) not in identities:
+                raise ValueError(f"{provider}: citation was not in retrieved evidence: {url}")
         if item["decision"] != "update":
             if item["recommended_model"] != current[provider]:
                 raise ValueError("Only update decisions may change a model")
@@ -233,14 +243,28 @@ def compare_openai(client, report, characters):
             # Samples must never enable tools, streaming or background work.
             if set(config) - {"reasoning", "text", "store", "max_output_tokens"}:
                 raise ValueError("Character generation settings require manual comparison")
-            response = client.responses.create(model=model, input=build_prompt(character, []), **config)
+            try:
+                response = client.responses.create(model=model, input=build_prompt(character, []), **config)
+            except Exception as exc:
+                # A retired baseline must not prevent testing its replacement.
+                # All candidate failures and auth/network errors still stop the
+                # run. Record only status, never an SDK exception body.
+                status = getattr(exc, "status_code", None)
+                if model != assessment["current_model"] or status not in (404, 410):
+                    raise
+                samples.append({"character": character.DISPLAY_NAME, "model": model,
+                                "text": f"Baseline unavailable (HTTP {status}); no comparison text.",
+                                "characters": 0, "within_target": False, "postable": False,
+                                "usage": None})
+                continue
             text = completed_text(response).strip()
             samples.append({"character": character.DISPLAY_NAME, "model": model,
                             "text": text, "characters": len(text),
                             "within_target": len(text) <= character.CHAR_TARGET,
                             "postable": 0 < len(text) <= 300,
                             "usage": response.usage.model_dump() if response.usage else None})
-    if any(not sample["postable"] for sample in samples):
+    if any(not sample["postable"] for sample in samples
+           if sample["model"] == assessment["recommended_model"]):
         assessment["decision"] = "attention"
         assessment["recommended_model"] = assessment["current_model"]
         assessment["reason"] += " Candidate comparison produced a non-postable sample; no automatic default update."

@@ -28,8 +28,9 @@ settings.
 4. For an OpenAI default upgrade, verify model access and generate one baseline
    and one candidate sample for each unpinned OpenAI character, up to two
    characters. Reject incomplete/empty/refused replies. Samples above 300
-   characters turn the proposal into an attention report rather than a default
-   change. Character target compliance is reported separately. No other
+   characters in candidate output turn the proposal into an attention report rather than a default
+   change. If the baseline model is already retired (HTTP 404/410), record that
+   and still test the replacement. Character target compliance is reported separately. No other
    provider is called for generation. No sample is posted or cached.
 5. Prepare literal default changes in `schtick/providers.py`, related default
    assertions and the README provider table. Prompts, persona providers,

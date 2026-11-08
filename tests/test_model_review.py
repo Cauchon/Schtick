@@ -99,6 +99,12 @@ def test_all_providers_and_exact_decisions_are_required():
         review.validate_report(proposal, CURRENT, set(URLS.values()))
 
 
+def test_equivalent_citation_urls_match_actual_search_sources():
+    proposal = report(update=True)
+    proposal["assessments"][-1]["sources"] = [URLS["openai"] + "/?hl=en#pricing"]
+    assert review.validate_report(proposal, CURRENT, set(URLS.values())) is proposal
+
+
 @pytest.mark.parametrize("status", ["incomplete", "failed", "in_progress"])
 def test_partial_api_output_never_becomes_a_proposal(status):
     with pytest.raises(ValueError, match="incomplete or failed"):
@@ -149,6 +155,25 @@ def test_unpostable_sample_turns_update_into_attention():
     review.compare_openai(client, proposal, [character()])
     assert proposal["assessments"][-1]["decision"] == "attention"
     assert proposal["assessments"][-1]["recommended_model"] == CURRENT["openai"]
+
+
+def test_retired_baseline_does_not_block_testing_its_replacement():
+    client = FakeClient()
+    class RetiredModel(Exception):
+        status_code = 404
+    def create(**kwargs):
+        client.calls.append(kwargs)
+        if kwargs["model"] == CURRENT["openai"]:
+            raise RetiredModel("SDK details must not reach reports")
+        return response()
+    client.responses.create = create
+    proposal = report(update=True)
+    samples = review.compare_openai(client, proposal, [character()])
+    assert len(client.calls) == len(samples) == 2
+    assert "HTTP 404" in samples[0]["text"]
+    assert "SDK details" not in samples[0]["text"]
+    assert samples[1]["postable"]
+    assert proposal["assessments"][-1]["decision"] == "update"
 
 
 @pytest.fixture
