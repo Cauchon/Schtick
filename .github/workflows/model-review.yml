@@ -13,6 +13,10 @@ concurrency:
   group: weekly-model-review
   cancel-in-progress: false
 
+env:
+  # Keep weekly research running while deferring new proposals until mid-December.
+  MODEL_REVIEW_PR_NOT_BEFORE: '2026-12-14'
+
 jobs:
   review:
     runs-on: ubuntu-latest
@@ -71,13 +75,19 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
+          from datetime import date, datetime, timezone
           from pathlib import Path
           root = Path(os.environ['RUNNER_TEMP']) / 'model-review'
           actionable = json.loads((root / 'result.json').read_text())['actionable']
+          not_before = date.fromisoformat(os.environ['MODEL_REVIEW_PR_NOT_BEFORE'])
+          paused = datetime.now(timezone.utc).date() < not_before
           with open(os.environ['GITHUB_OUTPUT'], 'a') as handle:
-              handle.write(f'actionable={str(actionable).lower()}\n')
+              handle.write(f'actionable={str(actionable and not paused).lower()}\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:
               handle.write((root / 'report.md').read_text())
+              if paused:
+                  handle.write(f'\n\nNew model-review PRs are paused until {not_before}. '
+                               'Research and validation still ran; evidence is preserved in the artifact.\n')
           PY
 
       - name: Preserve review evidence
@@ -137,3 +147,4 @@ jobs:
           gh pr create --repo "$GITHUB_REPOSITORY" --base "$GITHUB_REF_NAME" \
             --head "$branch" --draft --title 'Review recommended model updates' \
             --body-file "$RUNNER_TEMP/model-review/report.md"
+

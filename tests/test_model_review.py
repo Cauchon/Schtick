@@ -277,3 +277,52 @@ def test_workflow_does_not_run_on_prs_or_deploy():
     assert "gh pr merge" not in serialized
     assert "ssh " not in serialized
     assert "docker compose" not in serialized
+
+
+@pytest.mark.parametrize("today,actionable,expected", [
+    ("2026-11-16", True, False),
+    ("2026-12-13", True, False),
+    ("2026-12-14", True, True),
+    ("2026-12-21", True, True),
+    ("2026-12-14", False, False),
+])
+def test_workflow_defers_prs_but_preserves_research(
+    tmp_path, monkeypatch, today, actionable, expected
+):
+    import datetime
+    import yaml
+
+    workflow = yaml.load((review.ROOT / ".github/workflows/model-review.yml").read_text(),
+                         Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["review"]["steps"]
+    research = next(step for step in steps if step.get("name", "").startswith("Research with"))
+    assert research["if"] == "steps.pending.outputs.exists != 'true'"
+    preserve = next(step for step in steps if step.get("name") == "Preserve review evidence")
+    assert preserve["if"] == research["if"]
+    record = next(step for step in steps if step.get("id") == "result")
+    script = record["run"].split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+
+    real_datetime = datetime.datetime
+    class FrozenDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime.fromisoformat(today + "T17:23:00+00:00")
+    monkeypatch.setattr(datetime, "datetime", FrozenDatetime)
+    root = tmp_path / "model-review"
+    root.mkdir()
+    result = json.dumps({"actionable": actionable})
+    (root / "result.json").write_text(result)
+    (root / "report.md").write_text("Fresh research evidence")
+    output, summary = tmp_path / "output", tmp_path / "summary"
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setenv("MODEL_REVIEW_PR_NOT_BEFORE", workflow["env"]["MODEL_REVIEW_PR_NOT_BEFORE"])
+
+    exec(compile(script, "workflow-record-result", "exec"), {})
+
+    assert output.read_text() == f"actionable={str(expected).lower()}\n"
+    assert "Fresh research evidence" in summary.read_text()
+    assert (root / "result.json").read_text() == result
+    assert ("paused until 2026-12-14" in summary.read_text()) == (today < "2026-12-14")
+

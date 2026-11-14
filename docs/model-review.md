@@ -4,6 +4,13 @@
 (09:23 Pacific standard time / 10:23 Pacific daylight time), and supports
 manual dispatch from GitHub Actions. GitHub may delay scheduled runs.
 
+New model-review PRs are paused until **December 14, 2026**, using
+`MODEL_REVIEW_PR_NOT_BEFORE` in the workflow. After the existing proposal is
+closed, weekly research, offline validation, run summaries and evidence artifacts
+continue during the pause. The first scheduled review on or after that date can
+open a fresh draft PR if its findings are actionable. The pause does not change
+model defaults, merge proposals, deploy, or trigger an extra research run.
+
 It uses **GPT-6 Luna through the Responses API**, not the Codex CLI or Codex
 GitHub Action. The `MODEL_REVIEW_OPENAI_API_KEY` repository secret points to
 the existing API organization, so eligible API credits/billing apply. It does
@@ -104,3 +111,4 @@ References:
 - [Responses web search](https://developers.openai.com/api/docs/guides/tools-web-search)
 - [Structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [API credit coverage](https://developers.openai.com/api/docs/guides/chatgpt-api-credits)
+
